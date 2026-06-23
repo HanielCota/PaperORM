@@ -32,19 +32,15 @@ public final class SchemaManager {
         }
         var createIndexSql =
             "CREATE INDEX IF NOT EXISTS "
-                + quoteIdentifier(indexName)
+                + this.dialect.quoteIdentifier(indexName)
                 + " ON "
-                + quoteIdentifier(tableName)
+                + this.dialect.quoteIdentifier(tableName)
                 + " ("
-                + quoteIdentifier(column.columnName())
+                + this.dialect.quoteIdentifier(column.columnName())
                 + ")";
         execute(createIndexSql);
       }
     }
-  }
-
-  private String quoteIdentifier(String identifier) {
-    return "\"" + identifier.replace("\"", "\"\"") + "\"";
   }
 
   private void synchronizeColumns(EntityMetadata metadata) {

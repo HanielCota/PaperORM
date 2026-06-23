@@ -21,4 +21,6 @@ public interface SqlDialect {
   String existsById(EntityMetadata metadata);
 
   String addColumn(String tableName, com.github.paperorm.mapping.ColumnMetadata column);
+
+  String quoteIdentifier(String identifier);
 }

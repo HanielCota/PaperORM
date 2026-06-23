@@ -130,7 +130,8 @@ public final class StandardSqlDialect implements SqlDialect {
         + " = ? LIMIT 1";
   }
 
-  private String quoteIdentifier(String identifier) {
+  @Override
+  public String quoteIdentifier(String identifier) {
     return "\"" + identifier.replace("\"", "\"\"") + "\"";
   }
 

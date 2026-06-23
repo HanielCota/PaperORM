@@ -428,6 +428,6 @@ public final class SqlRepository<T> implements Repository<T> {
 
   @Override
   public Query<T> select() {
-    return new SqlQuery<>(this);
+    return new SqlQuery<>(this, this.dialect);
   }
 }

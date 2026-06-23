@@ -1,5 +1,6 @@
 package com.github.paperorm.repository;
 
+import com.github.paperorm.dialect.SqlDialect;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -8,13 +9,15 @@ import java.util.concurrent.CompletableFuture;
 public final class SqlQuery<T> implements Query<T> {
 
   private final Repository<T> repository;
+  private final SqlDialect dialect;
   private final StringBuilder whereClause = new StringBuilder();
   private final List<Object> parameters = new ArrayList<>();
   private boolean hasCondition = false;
   private String currentColumn = null;
 
-  public SqlQuery(Repository<T> repository) {
+  public SqlQuery(Repository<T> repository, SqlDialect dialect) {
     this.repository = repository;
+    this.dialect = dialect;
   }
 
   @Override
@@ -45,8 +48,7 @@ public final class SqlQuery<T> implements Query<T> {
       throw new IllegalStateException(
           "No active column defined. Call where(), and(), or or() first.");
     }
-    var escapedCol = this.currentColumn.replace("\"", "\"\"");
-    var quotedColumn = "\"" + escapedCol + "\"";
+    var quotedColumn = this.dialect.quoteIdentifier(this.currentColumn);
 
     this.whereClause.append(quotedColumn).append(" ").append(operator).append(" ?");
 
@@ -87,8 +89,7 @@ public final class SqlQuery<T> implements Query<T> {
       throw new IllegalStateException(
           "No active column defined. Call where(), and(), or or() first.");
     }
-    var escapedCol = this.currentColumn.replace("\"", "\"\"");
-    var quotedColumn = "\"" + escapedCol + "\"";
+    var quotedColumn = this.dialect.quoteIdentifier(this.currentColumn);
 
     this.whereClause.append(quotedColumn).append(" IS NULL");
     this.currentColumn = null;
@@ -102,8 +103,7 @@ public final class SqlQuery<T> implements Query<T> {
       throw new IllegalStateException(
           "No active column defined. Call where(), and(), or or() first.");
     }
-    var escapedCol = this.currentColumn.replace("\"", "\"\"");
-    var quotedColumn = "\"" + escapedCol + "\"";
+    var quotedColumn = this.dialect.quoteIdentifier(this.currentColumn);
 
     this.whereClause.append(quotedColumn).append(" IS NOT NULL");
     this.currentColumn = null;
@@ -125,8 +125,7 @@ public final class SqlQuery<T> implements Query<T> {
     if (values == null || values.isEmpty()) {
       throw new IllegalArgumentException("Values for IN clause cannot be null or empty");
     }
-    var escapedCol = this.currentColumn.replace("\"", "\"\"");
-    var quotedColumn = "\"" + escapedCol + "\"";
+    var quotedColumn = this.dialect.quoteIdentifier(this.currentColumn);
 
     var placeholders = new java.util.StringJoiner(", ");
     for (var val : values) {
@@ -144,8 +143,7 @@ public final class SqlQuery<T> implements Query<T> {
   public Query<T> orderBy(String column, String direction) {
     var isDesc = "DESC".equalsIgnoreCase(direction);
     var dir = isDesc ? "DESC" : "ASC";
-    var escapedCol = column.replace("\"", "\"\"");
-    var quotedColumn = "\"" + escapedCol + "\"";
+    var quotedColumn = this.dialect.quoteIdentifier(column);
 
     this.whereClause.append(" ORDER BY ").append(quotedColumn).append(" ").append(dir);
     return this;
