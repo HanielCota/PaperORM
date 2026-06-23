@@ -1,4 +1,4 @@
-package com.github.paperorm.repository;
+package com.github.paperorm.repository.query;
 
 import com.github.paperorm.dialect.SqlDialect;
 import java.util.ArrayList;

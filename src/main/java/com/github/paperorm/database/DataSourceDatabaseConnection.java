@@ -5,6 +5,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.sql.DataSource;
@@ -20,7 +21,7 @@ public class DataSourceDatabaseConnection implements DatabaseConnection {
   }
 
   public DataSourceDatabaseConnection(DataSource dataSource, Logger logger) {
-    this.dataSource = dataSource;
+    this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
     this.logger =
         logger != null ? logger : Logger.getLogger(DataSourceDatabaseConnection.class.getName());
   }
@@ -57,6 +58,7 @@ public class DataSourceDatabaseConnection implements DatabaseConnection {
 
   @Override
   public <T> T runInTransaction(TransactionCallback<T> callback) {
+    Objects.requireNonNull(callback, "callback");
     var existingConnection = activeTransactionConnection.get();
     if (existingConnection != null) {
       try {
@@ -105,11 +107,14 @@ public class DataSourceDatabaseConnection implements DatabaseConnection {
   public void close() {
     if (this.dataSource instanceof AutoCloseable closeable) {
       try {
-        logger.info("Closing Database connection pool.");
+        logger.info("Closing database connection pool.");
         closeable.close();
       } catch (Exception exception) {
         logger.log(Level.SEVERE, "Failed to close DataSource", exception);
       }
+    } else {
+      logger.warning(
+          "DataSource does not implement AutoCloseable; connection pool may not have been closed.");
     }
   }
 }

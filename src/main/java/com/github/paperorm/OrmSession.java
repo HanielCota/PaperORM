@@ -5,6 +5,7 @@ import com.github.paperorm.database.TransactionCallback;
 import com.github.paperorm.database.VoidTransactionCallback;
 import com.github.paperorm.repository.Repository;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.Getter;
@@ -26,6 +27,7 @@ public final class OrmSession implements AutoCloseable {
 
   @SuppressWarnings("unchecked")
   public <T> Repository<T> getRepository(Class<T> entityClass) {
+    Objects.requireNonNull(entityClass, "entityClass");
     if (this.closed) {
       throw new IllegalStateException("Session is closed");
     }
@@ -63,6 +65,7 @@ public final class OrmSession implements AutoCloseable {
   }
 
   public <T> T runInTransaction(TransactionCallback<T> callback) {
+    Objects.requireNonNull(callback, "callback");
     try {
       var result = this.connection.runInTransaction(callback);
       clearIdentityMap();
@@ -74,6 +77,7 @@ public final class OrmSession implements AutoCloseable {
   }
 
   public void runInTransaction(VoidTransactionCallback callback) {
+    Objects.requireNonNull(callback, "callback");
     try {
       this.connection.runInTransaction(callback);
       clearIdentityMap();
@@ -84,10 +88,12 @@ public final class OrmSession implements AutoCloseable {
   }
 
   public <T> CompletableFuture<T> runInTransactionAsync(TransactionCallback<T> callback) {
+    Objects.requireNonNull(callback, "callback");
     return CompletableFuture.supplyAsync(() -> runInTransaction(callback), this.factory.executor());
   }
 
   public CompletableFuture<Void> runInTransactionAsync(VoidTransactionCallback callback) {
+    Objects.requireNonNull(callback, "callback");
     return CompletableFuture.runAsync(() -> runInTransaction(callback), this.factory.executor());
   }
 

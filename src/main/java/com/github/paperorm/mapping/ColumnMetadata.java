@@ -13,4 +13,5 @@ public record ColumnMetadata(
     boolean manyToOne,
     Class<?> referencedClass,
     boolean indexed,
-    String indexName) {}
+    String indexName,
+    String sqlType) {}

@@ -385,6 +385,131 @@ class SqlRepositoryTest {
     var lessThan = repository.select().where("amount").lessThan(25.0).list();
     assertEquals(2, lessThan.size());
   }
+
+  @Test
+  void shouldRejectNullArgs() {
+    repository.ensureTable();
+    assertThrows(IllegalArgumentException.class, () -> repository.save(null));
+    assertThrows(IllegalArgumentException.class, () -> repository.findById(null));
+    assertThrows(IllegalArgumentException.class, () -> repository.deleteById(null));
+  }
+
+  @Test
+  void shouldBatchSaveWithManualIds() {
+    repository.ensureTable();
+    var entities =
+        java.util.List.of(
+            new TestReward(50L, "Batch1", 10.0),
+            new TestReward(51L, "Batch2", 20.0),
+            new TestReward(52L, "Batch3", 30.0));
+
+    repository.saveAll(entities);
+
+    assertEquals(3, repository.findAll().size());
+    assertTrue(repository.findById(50L).isPresent());
+    assertTrue(repository.findById(51L).isPresent());
+    assertTrue(repository.findById(52L).isPresent());
+  }
+
+  @Test
+  void shouldBatchSaveWithAutoIncrement() {
+    var autoRepo = new SqlRepository<>(AutoReward.class, connection, scanner, dialect, typeMapper);
+    autoRepo.ensureTable();
+
+    var a = new AutoReward();
+    a.name = "BatchA";
+    a.amount = 1.0;
+    var b = new AutoReward();
+    b.name = "BatchB";
+    b.amount = 2.0;
+
+    autoRepo.saveAll(java.util.List.of(a, b));
+
+    assertNotNull(a.id);
+    assertNotNull(b.id);
+    assertTrue(a.id > 0);
+    assertTrue(b.id > 0);
+    assertEquals(2, autoRepo.findAll().size());
+  }
+
+  @Test
+  void shouldBatchUpdate() {
+    repository.ensureTable();
+    var entities =
+        java.util.List.of(new TestReward(60L, "Upd1", 1.0), new TestReward(61L, "Upd2", 2.0));
+    repository.saveAll(entities);
+
+    entities.get(0).name = "Updated1";
+    entities.get(1).name = "Updated2";
+    repository.updateAll(entities);
+
+    assertEquals("Updated1", repository.findById(60L).get().name);
+    assertEquals("Updated2", repository.findById(61L).get().name);
+  }
+
+  @Test
+  void shouldCountWithQuery() {
+    repository.ensureTable();
+    repository.save(new TestReward(70L, "Count1", 1.0));
+    repository.save(new TestReward(71L, "Count1", 2.0));
+    repository.save(new TestReward(72L, "Count2", 3.0));
+
+    var total = repository.select().count();
+    assertEquals(3, total);
+
+    var filtered = repository.select().where("name").eq("Count1").count();
+    assertEquals(2, filtered);
+
+    var zero = repository.select().where("name").eq("Nonexistent").count();
+    assertEquals(0, zero);
+  }
+
+  @Test
+  void shouldCountByQuery() {
+    repository.ensureTable();
+    repository.save(new TestReward(80L, "CQ1", 10.0));
+    repository.save(new TestReward(81L, "CQ2", 20.0));
+
+    var count = repository.countByQuery("name = ?", "CQ1");
+    assertEquals(1, count);
+  }
+
+  @Test
+  void shouldHandleConcurrentAccess() throws Exception {
+    repository.ensureTable();
+
+    var threads = new java.util.ArrayList<Thread>();
+    var errors = new java.util.concurrent.atomic.AtomicInteger(0);
+
+    for (int i = 0; i < 10; i++) {
+      var id = 90L + i;
+      var reward = new TestReward(id, "Concurrent" + i, i * 10.0);
+      var thread =
+          new Thread(
+              () -> {
+                try {
+                  repository.save(reward);
+                  var found = repository.findById(id);
+                  if (found.isEmpty()) {
+                    errors.incrementAndGet();
+                  }
+                } catch (Exception e) {
+                  errors.incrementAndGet();
+                }
+              });
+      threads.add(thread);
+    }
+
+    for (var t : threads) {
+      t.start();
+    }
+    for (var t : threads) {
+      t.join();
+    }
+
+    assertEquals(0, errors.get());
+    assertEquals(10, repository.findAll().size());
+  }
 }
 
 @Entity

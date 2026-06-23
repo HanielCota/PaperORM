@@ -1,15 +1,14 @@
 package com.github.paperorm.repository;
 
+import com.github.paperorm.repository.query.Specification;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
-public final class MetricsRepository<T> implements Repository<T> {
+public final class MetricsRepository<T> extends ForwardingRepository<T> {
 
-  private final Repository<T> delegate;
   private final AtomicLong saveCount = new AtomicLong();
   private final AtomicLong updateCount = new AtomicLong();
   private final AtomicLong findCount = new AtomicLong();
@@ -18,7 +17,7 @@ public final class MetricsRepository<T> implements Repository<T> {
   private final AtomicLong totalTimeNanos = new AtomicLong();
 
   public MetricsRepository(Repository<T> delegate) {
-    this.delegate = delegate;
+    super(delegate);
   }
 
   public long saveCount() {
@@ -67,9 +66,21 @@ public final class MetricsRepository<T> implements Repository<T> {
   }
 
   @Override
+  public void saveAll(Iterable<T> entities) {
+    saveCount.incrementAndGet();
+    timed(() -> delegate.saveAll(entities));
+  }
+
+  @Override
   public void update(T entity) {
     updateCount.incrementAndGet();
     timed(() -> delegate.update(entity));
+  }
+
+  @Override
+  public void updateAll(Iterable<T> entities) {
+    updateCount.incrementAndGet();
+    timed(() -> delegate.updateAll(entities));
   }
 
   @Override
@@ -87,7 +98,7 @@ public final class MetricsRepository<T> implements Repository<T> {
   @Override
   public Optional<T> findById(Object id) {
     findCount.incrementAndGet();
-    return timed(delegate::findById, id);
+    return timed(() -> delegate.findById(id));
   }
 
   @Override
@@ -114,11 +125,6 @@ public final class MetricsRepository<T> implements Repository<T> {
   }
 
   @Override
-  public Query<T> select() {
-    return delegate.select();
-  }
-
-  @Override
   public List<T> find(Specification<T> spec) {
     queryCount.incrementAndGet();
     return timed(() -> delegate.find(spec));
@@ -131,61 +137,101 @@ public final class MetricsRepository<T> implements Repository<T> {
   }
 
   @Override
+  public long countByQuery(String whereClause, Object... parameters) {
+    queryCount.incrementAndGet();
+    return timed(() -> delegate.countByQuery(whereClause, parameters));
+  }
+
+  @Override
   public CompletableFuture<Void> ensureTableAsync() {
-    return delegate.ensureTableAsync();
+    queryCount.incrementAndGet();
+    return timedAsync(delegate.ensureTableAsync());
   }
 
   @Override
   public CompletableFuture<Void> saveAsync(T entity) {
-    return delegate.saveAsync(entity);
+    saveCount.incrementAndGet();
+    return timedAsync(delegate.saveAsync(entity));
+  }
+
+  @Override
+  public CompletableFuture<Void> saveAllAsync(Iterable<T> entities) {
+    saveCount.incrementAndGet();
+    return timedAsync(delegate.saveAllAsync(entities));
   }
 
   @Override
   public CompletableFuture<Void> updateAsync(T entity) {
-    return delegate.updateAsync(entity);
+    updateCount.incrementAndGet();
+    return timedAsync(delegate.updateAsync(entity));
+  }
+
+  @Override
+  public CompletableFuture<Void> updateAllAsync(Iterable<T> entities) {
+    updateCount.incrementAndGet();
+    return timedAsync(delegate.updateAllAsync(entities));
   }
 
   @Override
   public CompletableFuture<Void> deleteAsync(T entity) {
-    return delegate.deleteAsync(entity);
+    deleteCount.incrementAndGet();
+    return timedAsync(delegate.deleteAsync(entity));
   }
 
   @Override
   public CompletableFuture<Void> deleteByIdAsync(Object id) {
-    return delegate.deleteByIdAsync(id);
+    deleteCount.incrementAndGet();
+    return timedAsync(delegate.deleteByIdAsync(id));
   }
 
   @Override
   public CompletableFuture<Optional<T>> findByIdAsync(Object id) {
-    return delegate.findByIdAsync(id);
+    findCount.incrementAndGet();
+    return timedAsync(delegate.findByIdAsync(id));
   }
 
   @Override
   public CompletableFuture<List<T>> findAllAsync() {
-    return delegate.findAllAsync();
+    queryCount.incrementAndGet();
+    return timedAsync(delegate.findAllAsync());
   }
 
   @Override
   public CompletableFuture<List<T>> findByAsync(String column, Object value) {
-    return delegate.findByAsync(column, value);
+    queryCount.incrementAndGet();
+    return timedAsync(delegate.findByAsync(column, value));
   }
 
   @Override
   public CompletableFuture<Boolean> existsByIdAsync(Object id) {
-    return delegate.existsByIdAsync(id);
+    queryCount.incrementAndGet();
+    return timedAsync(delegate.existsByIdAsync(id));
   }
 
   @Override
   public CompletableFuture<List<T>> findByQueryAsync(String whereClause, Object... parameters) {
-    return delegate.findByQueryAsync(whereClause, parameters);
+    queryCount.incrementAndGet();
+    return timedAsync(delegate.findByQueryAsync(whereClause, parameters));
+  }
+
+  @Override
+  public CompletableFuture<Long> countByQueryAsync(String whereClause, Object... parameters) {
+    queryCount.incrementAndGet();
+    return timedAsync(delegate.countByQueryAsync(whereClause, parameters));
   }
 
   @Override
   public CompletableFuture<List<T>> findAsync(Specification<T> spec) {
-    return delegate.findAsync(spec);
+    queryCount.incrementAndGet();
+    return timedAsync(delegate.findAsync(spec));
   }
 
-  // ---- timing helpers ----
+  private <R> CompletableFuture<R> timedAsync(CompletableFuture<R> future) {
+    var start = System.nanoTime();
+    return future.whenComplete(
+        (result, exception) -> totalTimeNanos.addAndGet(System.nanoTime() - start));
+  }
+
   private void timed(Runnable action) {
     var start = System.nanoTime();
     try {
@@ -199,15 +245,6 @@ public final class MetricsRepository<T> implements Repository<T> {
     var start = System.nanoTime();
     try {
       return action.get();
-    } finally {
-      totalTimeNanos.addAndGet(System.nanoTime() - start);
-    }
-  }
-
-  private <R> R timed(Function<Object, R> action, Object arg) {
-    var start = System.nanoTime();
-    try {
-      return action.apply(arg);
     } finally {
       totalTimeNanos.addAndGet(System.nanoTime() - start);
     }

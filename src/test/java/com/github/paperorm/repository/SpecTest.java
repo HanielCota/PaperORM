@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.github.paperorm.dialect.SqlDialect;
 import com.github.paperorm.dialect.StandardSqlDialect;
+import com.github.paperorm.repository.query.Spec;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

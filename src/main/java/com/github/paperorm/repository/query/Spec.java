@@ -1,9 +1,10 @@
-package com.github.paperorm.repository;
+package com.github.paperorm.repository.query;
 
 import com.github.paperorm.dialect.SqlDialect;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 
 public final class Spec<T> implements Specification<T> {
 
@@ -13,12 +14,14 @@ public final class Spec<T> implements Specification<T> {
   private Spec() {}
 
   public static <T> Spec<T> where(String column) {
+    Objects.requireNonNull(column, "column");
     var spec = new Spec<T>();
     spec.currentColumn = column;
     return spec;
   }
 
   public Spec<T> and(String column) {
+    Objects.requireNonNull(column, "column");
     flushColumn();
     fragments.add(new Junction("AND"));
     this.currentColumn = column;
@@ -26,6 +29,7 @@ public final class Spec<T> implements Specification<T> {
   }
 
   public Spec<T> or(String column) {
+    Objects.requireNonNull(column, "column");
     flushColumn();
     fragments.add(new Junction("OR"));
     this.currentColumn = column;
@@ -169,17 +173,16 @@ public final class Spec<T> implements Specification<T> {
       switch (f) {
         case ColumnCondition(var col, var op, Object val) -> result.add(val);
         case InCondition(var col, List<?> vals) -> result.addAll(vals);
-        case Junction ignored -> {} // carries no parameter value
-        case NullCondition ignored -> {} // carries no parameter value
-        case OrderByClause ignored -> {} // carries no parameter value
-        case LimitClause ignored -> {} // carries no parameter value
-        case OffsetClause ignored -> {} // carries no parameter value
+        case Junction ignored -> {}
+        case NullCondition ignored -> {}
+        case OrderByClause ignored -> {}
+        case LimitClause ignored -> {}
+        case OffsetClause ignored -> {}
       }
     }
     return result;
   }
 
-  // ---- fragment types ----
   private sealed interface Fragment {}
 
   private record ColumnCondition(String column, String operator, Object value)

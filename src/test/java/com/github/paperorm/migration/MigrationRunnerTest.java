@@ -1,111 +1,175 @@
 package com.github.paperorm.migration;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.github.paperorm.database.SqliteDatabaseConnection;
-import com.github.paperorm.exception.OrmException;
-import java.io.IOException;
+import com.github.paperorm.dialect.StandardSqlDialect;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.CleanupMode;
 import org.junit.jupiter.api.io.TempDir;
 
 class MigrationRunnerTest {
 
-  @TempDir(cleanup = CleanupMode.NEVER)
-  Path tempDir;
+  @TempDir Path tempDir;
 
-  private final List<SqliteDatabaseConnection> connections = new ArrayList<>();
-  private final MigrationRunner migrationRunner = new MigrationRunner();
+  private SqliteDatabaseConnection connection;
+  private MigrationRunner runner;
+
+  @BeforeEach
+  void setUp() {
+    connection = new SqliteDatabaseConnection(tempDir.resolve("test.db"));
+    runner = new MigrationRunner(new StandardSqlDialect());
+  }
 
   @AfterEach
-  void tearDown() throws Exception {
-    connections.forEach(SqliteDatabaseConnection::close);
-    connections.clear();
-    deleteRecursively(tempDir);
+  void tearDown() {
+    connection.close();
   }
 
   @Test
-  void shouldApplyPendingMigrations() throws SQLException {
-    var connection = new SqliteDatabaseConnection(tempDir.resolve("migrations.db"));
-    connections.add(connection);
-    this.migrationRunner.run(
-        connection,
+  void shouldRunSingleMigration() throws Exception {
+    var migrations =
+        List.of(new Migration(1, "Create users", "CREATE TABLE users (id INTEGER PRIMARY KEY)"));
+    runner.run(connection, migrations);
+
+    assertTableExists("users");
+    assertMigrationRecorded(1);
+  }
+
+  @Test
+  void shouldRunMultipleMigrationsInOrder() throws Exception {
+    var migrations =
         List.of(
-            new Migration(
-                1,
-                "create users",
-                "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)"),
-            new Migration(
-                2, "insert default user", "INSERT INTO users (id, name) VALUES (1, 'admin')")));
+            new Migration(1, "Create t1", "CREATE TABLE t1 (id INTEGER PRIMARY KEY)"),
+            new Migration(2, "Create t2", "CREATE TABLE t2 (id INTEGER PRIMARY KEY)"),
+            new Migration(3, "Create t3", "CREATE TABLE t3 (id INTEGER PRIMARY KEY)"));
 
-    try (var stmt = connection.openConnection().createStatement();
-        var rs = stmt.executeQuery("SELECT COUNT(*) AS count FROM users")) {
-      assertTrue(rs.next());
-      assertEquals(1, rs.getInt("count"));
-    }
+    runner.run(connection, migrations);
+
+    assertTableExists("t1");
+    assertTableExists("t2");
+    assertTableExists("t3");
+    assertMigrationRecorded(1);
+    assertMigrationRecorded(2);
+    assertMigrationRecorded(3);
   }
 
   @Test
-  void shouldSkipAlreadyAppliedMigrations() {
-    var connection = new SqliteDatabaseConnection(tempDir.resolve("skip.db"));
-    connections.add(connection);
+  void shouldSkipAlreadyAppliedMigrations() throws Exception {
+    var migrations = List.of(new Migration(1, "Create a", "CREATE TABLE a (id INTEGER)"));
+    runner.run(connection, migrations);
 
-    this.migrationRunner.run(
-        connection,
-        List.of(new Migration(1, "create table", "CREATE TABLE t (id INTEGER PRIMARY KEY)")));
-    this.migrationRunner.run(
-        connection,
-        List.of(new Migration(1, "create table", "CREATE TABLE t (id INTEGER PRIMARY KEY)")));
-
-    var applied = new ArrayList<Integer>();
-
-    try (var stmt = connection.openConnection().createStatement();
-        var rs = stmt.executeQuery("SELECT version FROM paper_orm_migrations")) {
-      while (rs.next()) {
-        applied.add(rs.getInt("version"));
-      }
-    } catch (SQLException exception) {
-      throw new OrmException("Failed to read migrations", exception);
-    }
-
-    assertEquals(1, applied.size());
-    assertEquals(1, applied.get(0));
+    runner.run(connection, migrations);
+    assertTableExists("a");
+    assertEquals(1, countMigrationRecords());
   }
 
   @Test
-  void shouldFailOnInvalidMigrationSql() {
-    var connection = new SqliteDatabaseConnection(tempDir.resolve("fail.db"));
-    connections.add(connection);
-    var brokenMigration = new Migration(1, "broken", "CREATE TABLET t (id INTEGER PRIMARY KEY)");
+  void shouldSkipAlreadyAppliedWhenMixed() throws Exception {
+    runner.run(connection, List.of(new Migration(1, "First", "CREATE TABLE first (id INTEGER)")));
 
+    var mixed =
+        List.of(
+            new Migration(1, "First", "CREATE TABLE first (id INTEGER)"),
+            new Migration(2, "Second", "CREATE TABLE second (id INTEGER)"));
+    runner.run(connection, mixed);
+
+    assertTableExists("first");
+    assertTableExists("second");
+    assertEquals(2, countMigrationRecords());
+  }
+
+  @Test
+  void shouldHandleEmptyMigrations() {
+    runner.run(connection, List.of());
+    assertNotNull(connection);
+  }
+
+  @Test
+  void shouldLoadFromDirectory() throws Exception {
+    var dir = tempDir.resolve("migrations");
+    Files.createDirectory(dir);
+    Files.writeString(dir.resolve("V1.sql"), "CREATE TABLE from_dir (id INTEGER PRIMARY KEY)");
+    Files.writeString(dir.resolve("V2.sql"), "CREATE TABLE from_dir2 (id INTEGER PRIMARY KEY)");
+
+    var loaded = MigrationRunner.loadFromDirectory(dir);
+    assertEquals(2, loaded.size());
+    assertEquals(1, loaded.get(0).version());
+    assertEquals(2, loaded.get(1).version());
+  }
+
+  @Test
+  void shouldReturnEmptyForNonexistentDirectory() {
+    var nonExistent = tempDir.resolve("nonexistent");
+    var loaded = MigrationRunner.loadFromDirectory(nonExistent);
+    assertTrue(loaded.isEmpty());
+  }
+
+  @Test
+  void shouldRejectNullArgs() {
+    assertThrows(NullPointerException.class, () -> runner.run(null, List.of()));
+    assertThrows(NullPointerException.class, () -> runner.run(connection, null));
+  }
+
+  @Test
+  void shouldHandleOutOfOrderMigrations() throws Exception {
+    runner.run(connection, List.of(new Migration(3, "Third", "CREATE TABLE third (id INTEGER)")));
+
+    var all =
+        List.of(
+            new Migration(1, "First", "CREATE TABLE one (id INTEGER)"),
+            new Migration(2, "Second", "CREATE TABLE two (id INTEGER)"),
+            new Migration(3, "Third", "CREATE TABLE third (id INTEGER)"));
+    runner.run(connection, all);
+
+    assertTableExists("one");
+    assertTableExists("two");
+    assertTableExists("third");
+  }
+
+  @Test
+  void shouldRollbackOnFailedMigration() {
+    var badMigrations = List.of(new Migration(1, "Bad SQL", "THIS IS NOT VALID SQL"));
     assertThrows(
-        OrmException.class, () -> this.migrationRunner.run(connection, List.of(brokenMigration)));
+        com.github.paperorm.exception.ConnectionException.class,
+        () -> runner.run(connection, badMigrations));
+
+    assertEquals(0, countMigrationRecords());
   }
 
-  private static void deleteRecursively(Path dir) throws IOException {
-    if (!Files.exists(dir)) {
-      return;
+  private void assertTableExists(String tableName) throws Exception {
+    try (var conn = connection.openConnection()) {
+      var meta = conn.getMetaData();
+      try (var rs = meta.getTables(null, null, tableName, null)) {
+        assertTrue(rs.next(), "Table " + tableName + " should exist");
+      }
     }
-    try (Stream<Path> walk = Files.walk(dir)) {
-      walk.sorted(Comparator.reverseOrder())
-          .forEach(
-              path -> {
-                try {
-                  Files.deleteIfExists(path);
-                } catch (IOException cleanupException) {
-                  // File may be locked or already deleted during cleanup; this is non-fatal
-                }
-              });
+  }
+
+  private void assertMigrationRecorded(int version) throws Exception {
+    try (var conn = connection.openConnection();
+        var stmt =
+            conn.prepareStatement("SELECT version FROM paper_orm_migrations WHERE version = ?")) {
+      stmt.setInt(1, version);
+      try (var rs = stmt.executeQuery()) {
+        assertTrue(rs.next(), "Migration V" + version + " should be recorded");
+      }
     }
+  }
+
+  private int countMigrationRecords() {
+    try (var conn = connection.openConnection();
+        var stmt = conn.createStatement();
+        var rs = stmt.executeQuery("SELECT COUNT(*) FROM paper_orm_migrations")) {
+      if (rs.next()) {
+        return rs.getInt(1);
+      }
+    } catch (Exception ignored) {
+    }
+    return 0;
   }
 }

@@ -3,205 +3,165 @@ package com.github.paperorm.repository;
 import com.github.paperorm.repository.query.Query;
 import com.github.paperorm.repository.query.Specification;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
-public final class LoggingRepository<T> extends ForwardingRepository<T> {
+public class ForwardingRepository<T> implements Repository<T> {
 
-  private final Logger logger;
+  protected final Repository<T> delegate;
 
-  public LoggingRepository(Repository<T> delegate) {
-    this(delegate, Logger.getLogger(delegate.getClass().getName()));
-  }
-
-  public LoggingRepository(Repository<T> delegate, Logger logger) {
-    super(delegate);
-    this.logger = logger;
+  protected ForwardingRepository(Repository<T> delegate) {
+    this.delegate = Objects.requireNonNull(delegate, "delegate");
   }
 
   @Override
   public void ensureTable() {
-    log("ensureTable()");
     delegate.ensureTable();
   }
 
   @Override
   public void save(T entity) {
-    log("save({0})", entity);
     delegate.save(entity);
   }
 
   @Override
   public void saveAll(Iterable<T> entities) {
-    log("saveAll(Iterable)");
     delegate.saveAll(entities);
   }
 
   @Override
   public void update(T entity) {
-    log("update({0})", entity);
     delegate.update(entity);
   }
 
   @Override
   public void updateAll(Iterable<T> entities) {
-    log("updateAll(Iterable)");
     delegate.updateAll(entities);
   }
 
   @Override
   public void delete(T entity) {
-    log("delete({0})", entity);
     delegate.delete(entity);
   }
 
   @Override
   public void deleteById(Object id) {
-    log("deleteById({0})", id);
     delegate.deleteById(id);
   }
 
   @Override
   public Optional<T> findById(Object id) {
-    log("findById({0})", id);
     return delegate.findById(id);
   }
 
   @Override
   public List<T> findAll() {
-    log("findAll()");
     return delegate.findAll();
   }
 
   @Override
   public List<T> findBy(String column, Object value) {
-    log("findBy({0}, {1})", column, value);
     return delegate.findBy(column, value);
   }
 
   @Override
   public boolean existsById(Object id) {
-    log("existsById({0})", id);
     return delegate.existsById(id);
   }
 
   @Override
-  public void clearCache() {
-    log("clearCache()");
-    delegate.clearCache();
-  }
-
-  @Override
-  public Query<T> select() {
-    log("select()");
-    return delegate.select();
-  }
-
-  @Override
-  public List<T> find(Specification<T> spec) {
-    log("find({0})", spec);
-    return delegate.find(spec);
-  }
-
-  @Override
   public CompletableFuture<Void> ensureTableAsync() {
-    log("ensureTableAsync()");
     return delegate.ensureTableAsync();
   }
 
   @Override
   public CompletableFuture<Void> saveAsync(T entity) {
-    log("saveAsync({0})", entity);
     return delegate.saveAsync(entity);
   }
 
   @Override
   public CompletableFuture<Void> saveAllAsync(Iterable<T> entities) {
-    log("saveAllAsync(Iterable)");
     return delegate.saveAllAsync(entities);
   }
 
   @Override
   public CompletableFuture<Void> updateAsync(T entity) {
-    log("updateAsync({0})", entity);
     return delegate.updateAsync(entity);
   }
 
   @Override
   public CompletableFuture<Void> updateAllAsync(Iterable<T> entities) {
-    log("updateAllAsync(Iterable)");
     return delegate.updateAllAsync(entities);
   }
 
   @Override
   public CompletableFuture<Void> deleteAsync(T entity) {
-    log("deleteAsync({0})", entity);
     return delegate.deleteAsync(entity);
   }
 
   @Override
   public CompletableFuture<Void> deleteByIdAsync(Object id) {
-    log("deleteByIdAsync({0})", id);
     return delegate.deleteByIdAsync(id);
   }
 
   @Override
   public CompletableFuture<Optional<T>> findByIdAsync(Object id) {
-    log("findByIdAsync({0})", id);
     return delegate.findByIdAsync(id);
   }
 
   @Override
   public CompletableFuture<List<T>> findAllAsync() {
-    log("findAllAsync()");
     return delegate.findAllAsync();
   }
 
   @Override
   public CompletableFuture<List<T>> findByAsync(String column, Object value) {
-    log("findByAsync({0}, {1})", column, value);
     return delegate.findByAsync(column, value);
   }
 
   @Override
   public CompletableFuture<Boolean> existsByIdAsync(Object id) {
-    log("existsByIdAsync({0})", id);
     return delegate.existsByIdAsync(id);
   }
 
   @Override
   public List<T> findByQuery(String whereClause, Object... parameters) {
-    log("findByQuery({0})", whereClause);
     return delegate.findByQuery(whereClause, parameters);
   }
 
   @Override
   public CompletableFuture<List<T>> findByQueryAsync(String whereClause, Object... parameters) {
-    log("findByQueryAsync({0})", whereClause);
     return delegate.findByQueryAsync(whereClause, parameters);
   }
 
   @Override
   public long countByQuery(String whereClause, Object... parameters) {
-    log("countByQuery({0})", whereClause);
     return delegate.countByQuery(whereClause, parameters);
   }
 
   @Override
   public CompletableFuture<Long> countByQueryAsync(String whereClause, Object... parameters) {
-    log("countByQueryAsync({0})", whereClause);
     return delegate.countByQueryAsync(whereClause, parameters);
   }
 
   @Override
+  public void clearCache() {
+    delegate.clearCache();
+  }
+
+  @Override
+  public List<T> find(Specification<T> spec) {
+    return delegate.find(spec);
+  }
+
+  @Override
   public CompletableFuture<List<T>> findAsync(Specification<T> spec) {
-    log("findAsync({0})", spec);
     return delegate.findAsync(spec);
   }
 
-  private void log(String format, Object... args) {
-    logger.log(Level.FINE, format, args);
+  @Override
+  public Query<T> select() {
+    return delegate.select();
   }
 }

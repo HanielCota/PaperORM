@@ -13,51 +13,80 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public final class TypeMapper {
 
+  private static final TypeConverter<Object> NULL_CONVERTER =
+      new TypeConverter<>() {
+        @Override
+        public Class<Object> getType() {
+          return Object.class;
+        }
+
+        @Override
+        public void setParameter(PreparedStatement statement, int index, Object value)
+            throws SQLException {
+          statement.setObject(index, value);
+        }
+
+        @Override
+        public Object readValue(ResultSet resultSet, String columnName) throws SQLException {
+          return resultSet.getObject(columnName);
+        }
+      };
+
   private final Map<Class<?>, TypeConverter<?>> builtinConverters = new ConcurrentHashMap<>();
   private final Map<Class<?>, TypeConverter<?>> customConverters = new ConcurrentHashMap<>();
 
+  @FunctionalInterface
+  private interface ParameterSetter<T> {
+    void set(PreparedStatement statement, int index, T value) throws SQLException;
+  }
+
+  @FunctionalInterface
+  private interface ColumnReader<T> {
+    T read(ResultSet resultSet, String columnName) throws SQLException;
+  }
+
   public TypeMapper() {
-    loadServiceLoaderConverters();
+    for (var converter : ServiceLoader.load(TypeConverter.class)) {
+      customConverters.put(converter.getType(), converter);
+    }
 
     registerBuiltin(String.class, PreparedStatement::setString, ResultSet::getString);
 
-    registerBuiltin(int.class, (stmt, i, v) -> stmt.setInt(i, v), (rs, col) -> rs.getInt(col));
+    registerBuiltin(int.class, PreparedStatement::setInt, ResultSet::getInt);
 
     registerBuiltin(
         Integer.class,
-        (stmt, i, v) -> stmt.setInt(i, v),
+        PreparedStatement::setInt,
         (rs, col) -> {
           var raw = rs.getObject(col);
           return raw == null ? null : ((Number) raw).intValue();
         });
 
-    registerBuiltin(long.class, (stmt, i, v) -> stmt.setLong(i, v), (rs, col) -> rs.getLong(col));
+    registerBuiltin(long.class, PreparedStatement::setLong, ResultSet::getLong);
 
     registerBuiltin(
         Long.class,
-        (stmt, i, v) -> stmt.setLong(i, v),
+        PreparedStatement::setLong,
         (rs, col) -> {
           var raw = rs.getObject(col);
           return raw == null ? null : ((Number) raw).longValue();
         });
 
-    registerBuiltin(
-        double.class, (stmt, i, v) -> stmt.setDouble(i, v), (rs, col) -> rs.getDouble(col));
+    registerBuiltin(double.class, PreparedStatement::setDouble, ResultSet::getDouble);
 
     registerBuiltin(
         Double.class,
-        (stmt, i, v) -> stmt.setDouble(i, v),
+        PreparedStatement::setDouble,
         (rs, col) -> {
           var raw = rs.getObject(col);
           return raw == null ? null : ((Number) raw).doubleValue();
         });
 
-    registerBuiltin(
-        float.class, (stmt, i, v) -> stmt.setFloat(i, v), (rs, col) -> rs.getFloat(col));
+    registerBuiltin(float.class, PreparedStatement::setFloat, ResultSet::getFloat);
 
     registerBuiltin(
         Float.class,
-        (stmt, i, v) -> stmt.setFloat(i, v),
+        PreparedStatement::setFloat,
         (rs, col) -> {
           var raw = rs.getObject(col);
           return raw == null ? null : ((Number) raw).floatValue();
@@ -112,7 +141,7 @@ public final class TypeMapper {
           return raw == null ? null : ((Number) raw).byteValue();
         });
 
-    registerBuiltin(byte[].class, (stmt, i, v) -> stmt.setBytes(i, v), ResultSet::getBytes);
+    registerBuiltin(byte[].class, PreparedStatement::setBytes, ResultSet::getBytes);
 
     registerBuiltin(
         UUID.class,
@@ -171,27 +200,9 @@ public final class TypeMapper {
   }
 
   public void registerConverter(TypeConverter<?> converter) {
+
     customConverters.put(converter.getType(), converter);
   }
-
-  private static final TypeConverter<Object> NULL_CONVERTER =
-      new TypeConverter<>() {
-        @Override
-        public Class<Object> getType() {
-          return Object.class;
-        }
-
-        @Override
-        public void setParameter(PreparedStatement statement, int index, Object value)
-            throws SQLException {
-          statement.setObject(index, value);
-        }
-
-        @Override
-        public Object readValue(ResultSet resultSet, String columnName) throws SQLException {
-          return resultSet.getObject(columnName);
-        }
-      };
 
   @SuppressWarnings("unchecked")
   private TypeConverter<Object> findConverter(Class<?> clazz) {
@@ -227,82 +238,48 @@ public final class TypeMapper {
       return;
     }
 
+    var converter = findConverter(value.getClass());
+    if (converter != NULL_CONVERTER) {
+      converter.setParameter(statement, index, value);
+      return;
+    }
+
     if (value instanceof Enum<?> enumValue) {
       statement.setString(index, enumValue.name());
       return;
     }
 
-    findConverter(value.getClass()).setParameter(statement, index, value);
+    converter.setParameter(statement, index, value);
   }
 
   public Object readColumnValue(ResultSet resultSet, ColumnMetadata column) throws SQLException {
     var type = column.field().getType();
     var columnName = column.columnName();
 
+    var converter = findConverter(type);
+    if (converter != NULL_CONVERTER) {
+      return converter.readValue(resultSet, columnName);
+    }
+
     if (type.isEnum()) {
       var value = resultSet.getString(columnName);
-      return value == null ? null : parseEnum(type, value);
+      if (value == null) {
+        return null;
+      }
+
+      @SuppressWarnings({"unchecked", "rawtypes"})
+      var enumValue = Enum.valueOf((Class<Enum>) type, value);
+      return enumValue;
     }
 
-    return findConverter(type).readValue(resultSet, columnName);
+    return converter.readValue(resultSet, columnName);
   }
 
-  @SuppressWarnings("unchecked")
-  private <E extends Enum<E>> E parseEnum(Class<?> type, String value) {
-    return Enum.valueOf((Class<E>) type, value);
-  }
-
-  @SuppressWarnings("unchecked")
-  private void loadServiceLoaderConverters() {
-    for (var converter : ServiceLoader.load(TypeConverter.class)) {
-      customConverters.put(converter.getType(), converter);
-    }
-  }
-
+  /**
+   * @deprecated Use {@link SqlTypeResolver#resolve(Class)} instead.
+   */
+  @Deprecated
   public static String sqlTypeFor(Class<?> type) {
-    if (type == String.class
-        || type == UUID.class
-        || type == BigDecimal.class
-        || type == LocalDateTime.class
-        || type == Instant.class
-        || type.isEnum()) {
-      return "TEXT";
-    }
-
-    if (type == int.class
-        || type == Integer.class
-        || type == long.class
-        || type == Long.class
-        || type == short.class
-        || type == Short.class
-        || type == byte.class
-        || type == Byte.class
-        || type == boolean.class
-        || type == Boolean.class) {
-      return "INTEGER";
-    }
-
-    if (type == double.class
-        || type == Double.class
-        || type == float.class
-        || type == Float.class) {
-      return "REAL";
-    }
-
-    if (type == byte[].class) {
-      return "BLOB";
-    }
-
-    return "TEXT";
-  }
-
-  @FunctionalInterface
-  private interface ParameterSetter<T> {
-    void set(PreparedStatement statement, int index, T value) throws SQLException;
-  }
-
-  @FunctionalInterface
-  private interface ColumnReader<T> {
-    T read(ResultSet resultSet, String columnName) throws SQLException;
+    return SqlTypeResolver.resolve(type);
   }
 }

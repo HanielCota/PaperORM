@@ -1,8 +1,11 @@
 plugins {
     java
     `maven-publish`
-    id("com.diffplug.spotless") version "7.0.3"
+    id("com.diffplug.spotless") version "7.0.4"
+    jacoco
 }
+
+import org.gradle.testing.jacoco.tasks.JacocoReport
 
 group = "com.github.paperorm"
 version = "1.0.0-SNAPSHOT"
@@ -15,22 +18,22 @@ repositories {
 
 dependencies {
     implementation("org.xerial:sqlite-jdbc:3.49.1.0")
-    implementation("com.zaxxer:HikariCP:6.2.1")
+    implementation("com.zaxxer:HikariCP:6.3.0")
 
-    compileOnly("org.projectlombok:lombok:1.18.46")
-    annotationProcessor("org.projectlombok:lombok:1.18.46")
-    compileOnly("com.google.code.gson:gson:2.11.0")
+    compileOnly("org.projectlombok:lombok:1.18.38")
+    annotationProcessor("org.projectlombok:lombok:1.18.38")
+    compileOnly("com.google.code.gson:gson:2.14.0")
 
     testImplementation(platform("org.junit:junit-bom:5.12.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
-    testImplementation("com.google.code.gson:gson:2.11.0")
-    testImplementation("org.testcontainers:junit-jupiter:1.20.1")
-    testImplementation("org.testcontainers:mysql:1.20.1")
-    testImplementation("com.mysql:mysql-connector-j:9.0.0")
+    testImplementation("com.google.code.gson:gson:2.14.0")
+    testImplementation("org.testcontainers:junit-jupiter:1.21.3")
+    testImplementation("org.testcontainers:mysql:1.21.3")
+    testImplementation("com.mysql:mysql-connector-j:9.3.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
-    testCompileOnly("org.projectlombok:lombok:1.18.46")
-    testAnnotationProcessor("org.projectlombok:lombok:1.18.46")
+    testCompileOnly("org.projectlombok:lombok:1.18.38")
+    testAnnotationProcessor("org.projectlombok:lombok:1.18.38")
 }
 
 java {
@@ -50,6 +53,22 @@ tasks {
     test {
         useJUnitPlatform()
         jvmArgs("--enable-native-access=ALL-UNNAMED")
+    }
+}
+
+tasks.named("test") {
+    finalizedBy(tasks.named("jacocoTestReport"))
+}
+
+jacoco {
+    toolVersion = "0.8.12"
+}
+
+tasks.named<JacocoReport>("jacocoTestReport") {
+    dependsOn(tasks.named("test"))
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
     }
 }
 

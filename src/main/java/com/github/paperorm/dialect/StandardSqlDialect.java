@@ -1,9 +1,8 @@
 package com.github.paperorm.dialect;
 
-import com.github.paperorm.annotation.Id;
 import com.github.paperorm.mapping.ColumnMetadata;
 import com.github.paperorm.mapping.EntityMetadata;
-import com.github.paperorm.mapping.TypeMapper;
+import java.util.Objects;
 import java.util.StringJoiner;
 
 public record StandardSqlDialect(DatabaseType databaseType) implements SqlDialect {
@@ -32,7 +31,9 @@ public record StandardSqlDialect(DatabaseType databaseType) implements SqlDialec
       definition.append(quoteIdentifier(column.columnName())).append(" ").append(sqlType(column));
 
       if (column.id() && column.autoIncrement()) {
-        definition.append(" PRIMARY KEY ").append(autoIncrementKeyword());
+        definition
+            .append(" PRIMARY KEY ")
+            .append(databaseType == DatabaseType.MYSQL ? "AUTO_INCREMENT" : "AUTOINCREMENT");
         columnDefinitions.add(definition);
         continue;
       }
@@ -54,10 +55,6 @@ public record StandardSqlDialect(DatabaseType databaseType) implements SqlDialec
 
     sql.append(columnDefinitions).append(")");
     return sql.toString();
-  }
-
-  private String autoIncrementKeyword() {
-    return databaseType == DatabaseType.MYSQL ? "AUTO_INCREMENT" : "AUTOINCREMENT";
   }
 
   @Override
@@ -145,30 +142,35 @@ public record StandardSqlDialect(DatabaseType databaseType) implements SqlDialec
   }
 
   @Override
+  public String selectAllWithCondition(EntityMetadata metadata, String whereClause) {
+    return selectAllWithCondition(metadata, whereClause, selectAll(metadata));
+  }
+
+  @Override
   public String quoteIdentifier(String identifier) {
+    Objects.requireNonNull(identifier, "identifier");
     if (databaseType == DatabaseType.MYSQL) {
       return "`" + identifier.replace("`", "``") + "`";
     }
     return "\"" + identifier.replace("\"", "\"\"") + "\"";
   }
 
-  private static String sqlType(ColumnMetadata column) {
-    var type = column.field().getType();
-    if (column.manyToOne()) {
-      type = findIdTypeOf(column.referencedClass());
-    }
-
-    return TypeMapper.sqlTypeFor(type);
+  @Override
+  public String currentTimestampDefault() {
+    return databaseType == DatabaseType.MYSQL ? "UNIX_TIMESTAMP()" : "unixepoch()";
   }
 
-  private static Class<?> findIdTypeOf(Class<?> clazz) {
-    for (var field : clazz.getDeclaredFields()) {
-      if (field.isAnnotationPresent(Id.class)) {
-        return field.getType();
-      }
-    }
-    throw new IllegalArgumentException(
-        "Referenced entity " + clazz.getName() + " has no @Id field");
+  @Override
+  public String createMigrationTable() {
+    return "CREATE TABLE IF NOT EXISTS "
+        + quoteIdentifier("paper_orm_migrations")
+        + " (version INTEGER PRIMARY KEY, description TEXT NOT NULL, applied_at INTEGER NOT NULL DEFAULT ("
+        + currentTimestampDefault()
+        + "))";
+  }
+
+  private static String sqlType(ColumnMetadata column) {
+    return column.sqlType();
   }
 
   @Override

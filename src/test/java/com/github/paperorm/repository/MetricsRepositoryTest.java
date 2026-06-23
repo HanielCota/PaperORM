@@ -11,6 +11,7 @@ import com.github.paperorm.database.SqliteDatabaseConnection;
 import com.github.paperorm.dialect.StandardSqlDialect;
 import com.github.paperorm.mapping.ReflectionEntityScanner;
 import com.github.paperorm.mapping.TypeMapper;
+import com.github.paperorm.repository.query.Spec;
 import java.nio.file.Path;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

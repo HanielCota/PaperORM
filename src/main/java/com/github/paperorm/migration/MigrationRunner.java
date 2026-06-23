@@ -1,6 +1,7 @@
 package com.github.paperorm.migration;
 
 import com.github.paperorm.database.DatabaseConnection;
+import com.github.paperorm.dialect.SqlDialect;
 import com.github.paperorm.exception.ConnectionException;
 import com.github.paperorm.exception.OrmException;
 import java.io.IOException;
@@ -13,11 +14,20 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 public final class MigrationRunner {
 
+  private final SqlDialect dialect;
+
+  public MigrationRunner(SqlDialect dialect) {
+    this.dialect = Objects.requireNonNull(dialect, "dialect");
+  }
+
   public static List<Migration> loadFromClasspath(ClassLoader classLoader, String directoryPath) {
+    Objects.requireNonNull(classLoader, "classLoader");
+    Objects.requireNonNull(directoryPath, "directoryPath");
     var prefix = directoryPath.endsWith("/") ? directoryPath : directoryPath + "/";
     var migrations = new ArrayList<Migration>();
     int version = 1;
@@ -38,6 +48,7 @@ public final class MigrationRunner {
   }
 
   public static List<Migration> loadFromDirectory(Path directory) {
+    Objects.requireNonNull(directory, "directory");
     if (!Files.isDirectory(directory)) {
       return Collections.emptyList();
     }
@@ -60,6 +71,8 @@ public final class MigrationRunner {
   }
 
   public void run(DatabaseConnection connection, List<Migration> migrations) {
+    Objects.requireNonNull(connection, "connection");
+    Objects.requireNonNull(migrations, "migrations");
     ensureMigrationTable(connection);
 
     var appliedVersions = loadAppliedVersions(connection);
@@ -76,14 +89,7 @@ public final class MigrationRunner {
   }
 
   private void ensureMigrationTable(DatabaseConnection connection) {
-    var sql =
-        """
-                CREATE TABLE IF NOT EXISTS paper_orm_migrations (
-                    version INTEGER PRIMARY KEY,
-                    description TEXT NOT NULL,
-                    applied_at INTEGER NOT NULL DEFAULT (unixepoch())
-                )
-                """;
+    var sql = this.dialect.createMigrationTable();
 
     try {
       connection.execute(sql);

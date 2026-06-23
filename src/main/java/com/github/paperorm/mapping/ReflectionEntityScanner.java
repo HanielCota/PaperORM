@@ -3,6 +3,7 @@ package com.github.paperorm.mapping;
 import com.github.paperorm.annotation.Column;
 import com.github.paperorm.annotation.Entity;
 import com.github.paperorm.annotation.Id;
+import com.github.paperorm.annotation.Index;
 import com.github.paperorm.annotation.ManyToOne;
 import com.github.paperorm.annotation.Table;
 import com.github.paperorm.annotation.Transient;
@@ -10,6 +11,7 @@ import com.github.paperorm.exception.MappingException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class ReflectionEntityScanner implements EntityScanner {
@@ -18,6 +20,7 @@ public final class ReflectionEntityScanner implements EntityScanner {
 
   @Override
   public EntityMetadata scan(Class<?> entityClass) {
+    Objects.requireNonNull(entityClass, "entityClass");
     return cache.computeIfAbsent(entityClass, this::scanDirectly);
   }
 
@@ -87,9 +90,13 @@ public final class ReflectionEntityScanner implements EntityScanner {
       var nullable = columnAnnotation == null || columnAnnotation.nullable();
       var unique = columnAnnotation != null && columnAnnotation.unique();
       var length = (columnAnnotation != null) ? columnAnnotation.length() : 255;
-      var indexAnnotation = field.getAnnotation(com.github.paperorm.annotation.Index.class);
+      var indexAnnotation = field.getAnnotation(Index.class);
       var indexed = indexAnnotation != null;
       var indexName = indexed ? indexAnnotation.name() : "";
+
+      var sqlType =
+          SqlTypeResolver.resolve(
+              isManyToOne ? IdResolver.resolve(referencedClass).getType() : field.getType());
 
       var metadata =
           new ColumnMetadata(
@@ -103,7 +110,8 @@ public final class ReflectionEntityScanner implements EntityScanner {
               isManyToOne,
               referencedClass,
               indexed,
-              indexName);
+              indexName,
+              sqlType);
       columns.add(metadata);
 
       if (isId) {
@@ -124,7 +132,7 @@ public final class ReflectionEntityScanner implements EntityScanner {
 
   private static String camelToSnake(String value) {
     if (value == null || value.isBlank()) {
-      return value;
+      return "";
     }
 
     var result = new StringBuilder(value.length() + 5);

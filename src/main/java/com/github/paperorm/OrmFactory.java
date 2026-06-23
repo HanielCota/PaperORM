@@ -6,6 +6,8 @@ import com.github.paperorm.mapping.EntityScanner;
 import com.github.paperorm.mapping.TypeMapper;
 import com.github.paperorm.repository.Repository;
 import com.github.paperorm.repository.SqlRepository;
+import com.github.paperorm.repository.SqlRepositoryConfig;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
@@ -47,15 +49,11 @@ public final class OrmFactory {
   }
 
   public <T> Repository<T> createRepository(Class<T> entityClass) {
-    return new SqlRepository<>(
-        entityClass,
-        connection,
-        scanner,
-        dialect,
-        typeMapper,
-        executor,
-        useCache,
-        migrationsFuture);
+    Objects.requireNonNull(entityClass, "entityClass");
+    var config =
+        new SqlRepositoryConfig(
+            connection, scanner, dialect, typeMapper, executor, useCache, migrationsFuture);
+    return new SqlRepository<>(entityClass, config);
   }
 
   public <T> Repository<T> createRepository(Class<T> entityClass, OrmSession session) {
