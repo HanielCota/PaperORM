@@ -42,6 +42,14 @@ public final class PaperOrm implements AutoCloseable {
     return new Builder();
   }
 
+  public static PaperOrm sqlite(java.nio.file.Path path, Class<?>... entities) {
+    var builder = builder().sqlite(path).useVirtualThreads().autoCreateTables(true);
+    for (var entity : entities) {
+      builder.registerEntity(entity);
+    }
+    return builder.build();
+  }
+
   public <T> Repository<T> getRepository(Class<T> entityClass) {
     return this.defaultSession.getRepository(entityClass);
   }
@@ -131,6 +139,39 @@ public final class PaperOrm implements AutoCloseable {
 
     public <T> Builder registerConverter(com.github.paperorm.mapping.TypeConverter<T> converter) {
       this.typeMapper.registerConverter(converter);
+      return this;
+    }
+
+    public <T> Builder registerJsonConverter(Class<T> type) {
+      this.typeMapper.registerConverter(
+          new com.github.paperorm.mapping.TypeConverter<T>() {
+            private final com.google.gson.Gson gson = new com.google.gson.Gson();
+
+            @Override
+            public Class<T> getType() {
+              return type;
+            }
+
+            @Override
+            public void setParameter(java.sql.PreparedStatement statement, int index, T value)
+                throws java.sql.SQLException {
+              if (value == null) {
+                statement.setString(index, null);
+              } else {
+                statement.setString(index, gson.toJson(value));
+              }
+            }
+
+            @Override
+            public T readValue(java.sql.ResultSet resultSet, String columnName)
+                throws java.sql.SQLException {
+              var raw = resultSet.getString(columnName);
+              if (raw == null) {
+                return null;
+              }
+              return gson.fromJson(raw, type);
+            }
+          });
       return this;
     }
 

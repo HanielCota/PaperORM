@@ -212,6 +212,35 @@ class PaperOrmTest {
     var inList = repository.select().where("id").in(e1.getId(), e3.getId()).list();
     assertEquals(2, inList.size());
   }
+
+  @Test
+  void shouldWorkWithStartersAndGsonJsonConverterAndAbstractRepository() {
+    var dbPath = tempDir.resolve("starter.db");
+
+    var orm =
+        PaperOrm.builder()
+            .sqlite(dbPath)
+            .registerJsonConverter(CustomInfo.class)
+            .registerEntity(CustomRepoEntity.class)
+            .autoCreateTables(true)
+            .build();
+
+    try {
+      var customRepo = new CustomEntityRepository(orm);
+      customRepo.ensureTable();
+
+      var entity = new CustomRepoEntity();
+      entity.info = new CustomInfo("GsonIsAwesome", 42);
+      customRepo.save(entity);
+
+      var found = customRepo.findById(entity.id);
+      assertTrue(found.isPresent());
+      assertEquals("GsonIsAwesome", found.get().info.text);
+      assertEquals(42, found.get().info.code);
+    } finally {
+      orm.close();
+    }
+  }
 }
 
 @Entity
@@ -260,5 +289,35 @@ class CustomDataConverter implements TypeConverter<CustomData> {
     }
     var parts = raw.split(":");
     return new CustomData(parts[0], parts[1]);
+  }
+}
+
+class DummyForLineSpacing {}
+
+@Entity
+@Table(name = "custom_repos")
+class CustomRepoEntity {
+  @Id(autoIncrement = true)
+  Long id;
+
+  @Column CustomInfo info;
+}
+
+class CustomInfo {
+  String text;
+  int code;
+
+  CustomInfo() {}
+
+  CustomInfo(String text, int code) {
+    this.text = text;
+    this.code = code;
+  }
+}
+
+class CustomEntityRepository
+    extends com.github.paperorm.repository.AbstractRepository<CustomRepoEntity> {
+  CustomEntityRepository(PaperOrm orm) {
+    super(CustomRepoEntity.class, orm);
   }
 }

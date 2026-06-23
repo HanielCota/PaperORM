@@ -19,9 +19,11 @@ dependencies {
 
     compileOnly("org.projectlombok:lombok:1.18.46")
     annotationProcessor("org.projectlombok:lombok:1.18.46")
+    compileOnly("com.google.code.gson:gson:2.11.0")
 
     testImplementation(platform("org.junit:junit-bom:5.12.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
+    testImplementation("com.google.code.gson:gson:2.11.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
     testCompileOnly("org.projectlombok:lombok:1.18.46")
