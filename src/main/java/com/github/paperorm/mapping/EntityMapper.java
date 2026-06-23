@@ -1,11 +1,13 @@
 package com.github.paperorm.mapping;
 
+import com.github.paperorm.annotation.Id;
 import com.github.paperorm.exception.MappingException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.UUID;
 
 public final class EntityMapper<T> {
 
@@ -61,7 +63,7 @@ public final class EntityMapper<T> {
   private Object getEntityId(Object entity) {
     try {
       for (var field : entity.getClass().getDeclaredFields()) {
-        if (field.isAnnotationPresent(com.github.paperorm.annotation.Id.class)) {
+        if (field.isAnnotationPresent(Id.class)) {
           field.setAccessible(true);
           return field.get(entity);
         }
@@ -100,21 +102,25 @@ public final class EntityMapper<T> {
       var shell = ctor.newInstance();
 
       for (var field : clazz.getDeclaredFields()) {
-        if (field.isAnnotationPresent(com.github.paperorm.annotation.Id.class)) {
+        if (field.isAnnotationPresent(Id.class)) {
           field.setAccessible(true);
           var targetType = field.getType();
 
           if ((targetType == Integer.class || targetType == int.class)
               && idValue instanceof Number num) {
             field.set(shell, num.intValue());
-          } else if ((targetType == Long.class || targetType == long.class)
+            break;
+          }
+          if ((targetType == Long.class || targetType == long.class)
               && idValue instanceof Number num) {
             field.set(shell, num.longValue());
-          } else if (targetType == java.util.UUID.class && idValue instanceof String str) {
-            field.set(shell, java.util.UUID.fromString(str));
-          } else {
-            field.set(shell, idValue);
+            break;
           }
+          if (targetType == UUID.class && idValue instanceof String str) {
+            field.set(shell, UUID.fromString(str));
+            break;
+          }
+          field.set(shell, idValue);
           break;
         }
       }

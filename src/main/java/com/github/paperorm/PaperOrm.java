@@ -164,9 +164,9 @@ public final class PaperOrm implements AutoCloseable {
                 throws SQLException {
               if (value == null) {
                 statement.setString(index, null);
-              } else {
-                statement.setString(index, gson.toJson(value));
+                return;
               }
+              statement.setString(index, gson.toJson(value));
             }
 
             @Override
