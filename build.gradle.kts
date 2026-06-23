@@ -44,6 +44,7 @@ tasks {
     withType<JavaCompile> {
         options.encoding = "UTF-8"
         options.release.set(21)
+        options.compilerArgs.add("-Xlint:unchecked")
     }
 
     test {
@@ -56,6 +57,7 @@ spotless {
     java {
         googleJavaFormat("1.27.0")
         target("src/**/*.java")
+        removeUnusedImports()
     }
 }
 

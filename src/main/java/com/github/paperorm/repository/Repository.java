@@ -49,4 +49,8 @@ public interface Repository<T> {
   void clearCache();
 
   Query<T> select();
+
+  List<T> find(Specification<T> spec);
+
+  CompletableFuture<List<T>> findAsync(Specification<T> spec);
 }

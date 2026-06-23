@@ -3,6 +3,7 @@ package com.github.paperorm.mapping;
 import com.github.paperorm.annotation.Column;
 import com.github.paperorm.annotation.Entity;
 import com.github.paperorm.annotation.Id;
+import com.github.paperorm.annotation.ManyToOne;
 import com.github.paperorm.annotation.Table;
 import com.github.paperorm.annotation.Transient;
 import com.github.paperorm.exception.MappingException;
@@ -41,7 +42,7 @@ public final class ReflectionEntityScanner implements EntityScanner {
           || field.isAnnotationPresent(Transient.class)
           || (!field.isAnnotationPresent(Column.class)
               && !field.isAnnotationPresent(Id.class)
-              && !field.isAnnotationPresent(com.github.paperorm.annotation.ManyToOne.class))) {
+              && !field.isAnnotationPresent(ManyToOne.class))) {
         continue;
       }
 
@@ -56,7 +57,7 @@ public final class ReflectionEntityScanner implements EntityScanner {
 
       var columnAnnotation = field.getAnnotation(Column.class);
       var idAnnotation = field.getAnnotation(Id.class);
-      var manyToOneAnnotation = field.getAnnotation(com.github.paperorm.annotation.ManyToOne.class);
+      var manyToOneAnnotation = field.getAnnotation(ManyToOne.class);
 
       var isManyToOne = manyToOneAnnotation != null;
       var referencedClass = isManyToOne ? field.getType() : null;
@@ -136,7 +137,11 @@ public final class ReflectionEntityScanner implements EntityScanner {
       }
 
       if (i > 0) {
-        result.append('_');
+        var prev = value.charAt(i - 1);
+        var next = i + 1 < value.length() ? value.charAt(i + 1) : '\0';
+        if (Character.isLowerCase(prev) || (Character.isLowerCase(next))) {
+          result.append('_');
+        }
       }
       result.append(Character.toLowerCase(ch));
     }

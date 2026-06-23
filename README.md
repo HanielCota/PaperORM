@@ -1,4 +1,5 @@
 <div align="center">
+<img src="assets/logo.png" alt="Logo do PaperORM" width="300" />
 
 # 🔌 PaperORM
 

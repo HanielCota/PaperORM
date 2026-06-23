@@ -7,6 +7,7 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.ServiceLoader;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -16,6 +17,8 @@ public final class TypeMapper {
   private final Map<Class<?>, TypeConverter<?>> customConverters = new ConcurrentHashMap<>();
 
   public TypeMapper() {
+    loadServiceLoaderConverters();
+
     registerBuiltin(String.class, PreparedStatement::setString, ResultSet::getString);
 
     registerBuiltin(int.class, (stmt, i, v) -> stmt.setInt(i, v), (rs, col) -> rs.getInt(col));
@@ -65,7 +68,13 @@ public final class TypeMapper {
 
     registerBuiltin(
         Boolean.class,
-        (stmt, i, v) -> stmt.setInt(i, v ? 1 : 0),
+        (stmt, i, v) -> {
+          if (v == null) {
+            stmt.setNull(i, java.sql.Types.INTEGER);
+          } else {
+            stmt.setInt(i, v ? 1 : 0);
+          }
+        },
         (rs, col) -> {
           var raw = rs.getObject(col);
           if (raw == null) {
@@ -161,9 +170,28 @@ public final class TypeMapper {
         });
   }
 
-  public <T> void registerConverter(TypeConverter<T> converter) {
+  public void registerConverter(TypeConverter<?> converter) {
     customConverters.put(converter.getType(), converter);
   }
+
+  private static final TypeConverter<Object> NULL_CONVERTER =
+      new TypeConverter<>() {
+        @Override
+        public Class<Object> getType() {
+          return Object.class;
+        }
+
+        @Override
+        public void setParameter(PreparedStatement statement, int index, Object value)
+            throws SQLException {
+          statement.setObject(index, value);
+        }
+
+        @Override
+        public Object readValue(ResultSet resultSet, String columnName) throws SQLException {
+          return resultSet.getObject(columnName);
+        }
+      };
 
   @SuppressWarnings("unchecked")
   private TypeConverter<Object> findConverter(Class<?> clazz) {
@@ -183,7 +211,13 @@ public final class TypeMapper {
       return (TypeConverter<Object>) builtin;
     }
 
-    return null;
+    for (var entry : builtinConverters.entrySet()) {
+      if (entry.getKey().isAssignableFrom(clazz)) {
+        return (TypeConverter<Object>) entry.getValue();
+      }
+    }
+
+    return NULL_CONVERTER;
   }
 
   public void setParameter(PreparedStatement statement, int index, Object value)
@@ -193,40 +227,36 @@ public final class TypeMapper {
       return;
     }
 
-    var converter = findConverter(value.getClass());
-    if (converter != null) {
-      converter.setParameter(statement, index, value);
-      return;
-    }
-
     if (value instanceof Enum<?> enumValue) {
       statement.setString(index, enumValue.name());
       return;
     }
 
-    statement.setObject(index, value);
+    findConverter(value.getClass()).setParameter(statement, index, value);
   }
 
   public Object readColumnValue(ResultSet resultSet, ColumnMetadata column) throws SQLException {
     var type = column.field().getType();
     var columnName = column.columnName();
 
-    var converter = findConverter(type);
-    if (converter != null) {
-      return converter.readValue(resultSet, columnName);
-    }
-
     if (type.isEnum()) {
       var value = resultSet.getString(columnName);
-      if (value == null) {
-        return null;
-      }
-      @SuppressWarnings("unchecked")
-      Class<? extends Enum> enumType = (Class<? extends Enum>) type;
-      return Enum.valueOf(enumType, value);
+      return value == null ? null : parseEnum(type, value);
     }
 
-    return resultSet.getObject(columnName);
+    return findConverter(type).readValue(resultSet, columnName);
+  }
+
+  @SuppressWarnings("unchecked")
+  private <E extends Enum<E>> E parseEnum(Class<?> type, String value) {
+    return Enum.valueOf((Class<E>) type, value);
+  }
+
+  @SuppressWarnings("unchecked")
+  private void loadServiceLoaderConverters() {
+    for (var converter : ServiceLoader.load(TypeConverter.class)) {
+      customConverters.put(converter.getType(), converter);
+    }
   }
 
   public static String sqlTypeFor(Class<?> type) {

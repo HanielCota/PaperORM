@@ -4,6 +4,7 @@ import com.github.paperorm.dialect.SqlDialect;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.StringJoiner;
 import java.util.concurrent.CompletableFuture;
 
 public final class SqlQuery<T> implements Query<T> {
@@ -31,6 +32,12 @@ public final class SqlQuery<T> implements Query<T> {
 
   @Override
   public Query<T> and(String column) {
+    if (this.currentColumn != null) {
+      throw new IllegalStateException(
+          "Previous column '"
+              + this.currentColumn
+              + "' has no operator. Call eq(), notEq(), isNull(), etc. before and().");
+    }
     this.whereClause.append(" AND ");
     this.currentColumn = column;
     return this;
@@ -38,6 +45,12 @@ public final class SqlQuery<T> implements Query<T> {
 
   @Override
   public Query<T> or(String column) {
+    if (this.currentColumn != null) {
+      throw new IllegalStateException(
+          "Previous column '"
+              + this.currentColumn
+              + "' has no operator. Call eq(), notEq(), isNull(), etc. before or().");
+    }
     this.whereClause.append(" OR ");
     this.currentColumn = column;
     return this;
@@ -127,7 +140,7 @@ public final class SqlQuery<T> implements Query<T> {
     }
     var quotedColumn = this.dialect.quoteIdentifier(this.currentColumn);
 
-    var placeholders = new java.util.StringJoiner(", ");
+    var placeholders = new StringJoiner(", ");
     for (var val : values) {
       placeholders.add("?");
       this.parameters.add(val);
@@ -163,6 +176,7 @@ public final class SqlQuery<T> implements Query<T> {
 
   @Override
   public List<T> list() {
+    validateState();
     var sql = this.whereClause.toString();
     var params = this.parameters.toArray();
     return this.repository.findByQuery(sql, params);
@@ -170,14 +184,29 @@ public final class SqlQuery<T> implements Query<T> {
 
   @Override
   public CompletableFuture<List<T>> listAsync() {
+    validateState();
     var sql = this.whereClause.toString();
     var params = this.parameters.toArray();
     return this.repository.findByQueryAsync(sql, params);
   }
 
+  private void validateState() {
+    if (this.currentColumn != null) {
+      throw new IllegalStateException(
+          "Column '"
+              + this.currentColumn
+              + "' has no operator. Call eq(), notEq(), isNull(), etc. before executing the query.");
+    }
+  }
+
   @Override
   public Optional<T> uniqueResult() {
-    var result = list();
+    var limitedQuery = new SqlQuery<>(this.repository, this.dialect);
+    limitedQuery.whereClause.append(this.whereClause);
+    limitedQuery.parameters.addAll(this.parameters);
+    limitedQuery.hasCondition = this.hasCondition;
+    limitedQuery.whereClause.append(" LIMIT 1");
+    var result = limitedQuery.list();
     if (result.isEmpty()) {
       return Optional.empty();
     }
@@ -187,14 +216,6 @@ public final class SqlQuery<T> implements Query<T> {
 
   @Override
   public CompletableFuture<Optional<T>> uniqueResultAsync() {
-    return listAsync()
-        .thenApply(
-            list -> {
-              if (list.isEmpty()) {
-                return Optional.empty();
-              }
-              var first = list.getFirst();
-              return Optional.of(first);
-            });
+    return CompletableFuture.supplyAsync(this::uniqueResult);
   }
 }

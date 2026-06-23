@@ -21,7 +21,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.logging.Logger;
@@ -31,16 +33,22 @@ public final class PaperOrm implements AutoCloseable {
   private final DatabaseConnection connection;
   private final OrmFactory factory;
   private final OrmSession defaultSession;
+  private final CompletableFuture<Void> migrationsFuture;
+  private final Executor executor;
 
   private PaperOrm(
       DatabaseConnection connection,
       OrmFactory factory,
       List<Class<?>> registeredEntities,
       boolean autoCreateTables,
-      boolean useCache) {
+      boolean useCache,
+      CompletableFuture<Void> migrationsFuture,
+      Executor executor) {
     this.connection = connection;
     this.factory = factory;
+    this.migrationsFuture = migrationsFuture;
     this.defaultSession = new OrmSession(connection, factory, useCache);
+    this.executor = executor;
 
     for (var entityClass : registeredEntities) {
       var repo = this.defaultSession.getRepository(entityClass);
@@ -74,10 +82,23 @@ public final class PaperOrm implements AutoCloseable {
     return new OrmSession(this.connection, this.factory, this.defaultSession.isUseCache());
   }
 
+  public void awaitMigrations() {
+    if (this.migrationsFuture != null) {
+      this.migrationsFuture.join();
+    }
+  }
+
+  public boolean hasPendingMigrations() {
+    return this.migrationsFuture != null && !this.migrationsFuture.isDone();
+  }
+
   @Override
   public void close() {
     this.defaultSession.close();
     this.connection.close();
+    if (this.executor instanceof ExecutorService service && !service.isShutdown()) {
+      service.shutdown();
+    }
   }
 
   public static final class Builder {
@@ -101,6 +122,7 @@ public final class PaperOrm implements AutoCloseable {
 
     public Builder sqlite(Path path) {
       this.sqlitePath = path;
+      this.dialect = new StandardSqlDialect(StandardSqlDialect.DatabaseType.SQLITE);
       return this;
     }
 
@@ -133,6 +155,7 @@ public final class PaperOrm implements AutoCloseable {
       config.addDataSourceProperty("useServerPrepStmts", "true");
 
       this.connection = new DataSourceDatabaseConnection(new HikariDataSource(config), this.logger);
+      this.dialect = new StandardSqlDialect(StandardSqlDialect.DatabaseType.MYSQL);
       return this;
     }
 
@@ -166,11 +189,11 @@ public final class PaperOrm implements AutoCloseable {
       return this;
     }
 
+    private final Gson gson = new Gson();
+
     public <T> Builder registerJsonConverter(Class<T> type) {
       this.typeMapper.registerConverter(
           new TypeConverter<T>() {
-            private final Gson gson = new Gson();
-
             @Override
             public Class<T> getType() {
               return type;
@@ -216,20 +239,41 @@ public final class PaperOrm implements AutoCloseable {
         throw new IllegalStateException("Either connection or sqlite path must be specified.");
       }
 
-      if (conn == null) {
-        conn = new SqliteDatabaseConnection(path, this.logger);
+      var finalConn = conn == null ? new SqliteDatabaseConnection(path, this.logger) : conn;
+      try {
+        CompletableFuture<Void> migrationsFuture = null;
+        if (!this.migrations.isEmpty()) {
+          var runner = new MigrationRunner();
+          var migrationList = List.copyOf(this.migrations);
+          migrationsFuture =
+              CompletableFuture.runAsync(
+                  () -> runner.run(finalConn, migrationList), this.executor);
+        }
+
+        var factory =
+            new OrmFactory(
+                finalConn,
+                this.scanner,
+                this.dialect,
+                this.typeMapper,
+                this.executor,
+                this.useCache,
+                migrationsFuture);
+
+        return new PaperOrm(
+            finalConn,
+            factory,
+            this.registeredEntities,
+            this.autoCreateTables,
+            this.useCache,
+            migrationsFuture,
+            this.executor);
+      } catch (RuntimeException exception) {
+        if (conn == null) {
+          finalConn.close();
+        }
+        throw exception;
       }
-
-      if (!this.migrations.isEmpty()) {
-        new MigrationRunner().run(conn, this.migrations);
-      }
-
-      var factory =
-          new OrmFactory(
-              conn, this.scanner, this.dialect, this.typeMapper, this.executor, this.useCache);
-
-      return new PaperOrm(
-          conn, factory, this.registeredEntities, this.autoCreateTables, this.useCache);
     }
   }
 }

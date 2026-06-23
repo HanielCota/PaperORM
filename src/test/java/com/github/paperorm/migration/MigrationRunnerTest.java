@@ -102,8 +102,8 @@ class MigrationRunnerTest {
               path -> {
                 try {
                   Files.deleteIfExists(path);
-                } catch (IOException ignored) {
-                  // File may be locked or already deleted during cleanup
+                } catch (IOException cleanupException) {
+                  // File may be locked or already deleted during cleanup; this is non-fatal
                 }
               });
     }

@@ -9,6 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.github.paperorm.TestEntity;
 import com.github.paperorm.annotation.Column;
 import com.github.paperorm.annotation.Entity;
+import com.github.paperorm.annotation.Id;
+import com.github.paperorm.annotation.Table;
 import com.github.paperorm.exception.MappingException;
 import org.junit.jupiter.api.Test;
 
@@ -42,4 +44,36 @@ class EntityScannerTest {
   void scanEntityWithoutIdThrows() {
     assertThrows(MappingException.class, () -> this.scanner.scan(EntityWithoutId.class));
   }
+
+  @Test
+  void camelToSnakeHandlesAbbreviations() {
+    var metadata = this.scanner.scan(XmlParserEntity.class);
+    assertEquals("xml_parser_entities", metadata.tableName());
+    // Each column should be snake_case
+    var columns = metadata.columns();
+    assertEquals(4, columns.size());
+
+    var parseXmlCol = columns.stream().filter(c -> c.columnName().equals("parse_xml")).findFirst();
+    assertTrue(parseXmlCol.isPresent(), "Should have parse_xml column");
+
+    var getUrlCol = columns.stream().filter(c -> c.columnName().equals("get_url")).findFirst();
+    assertTrue(getUrlCol.isPresent(), "Should have get_url column");
+
+    var normalCol = columns.stream().filter(c -> c.columnName().equals("normal_field")).findFirst();
+    assertTrue(normalCol.isPresent(), "Should have normal_field column");
+  }
+}
+
+@Entity
+@Table(name = "xml_parser_entities")
+class XmlParserEntity {
+  @Id private Long id;
+
+  @Column private String parseXML;
+
+  @Column private String getURL;
+
+  @Column private String normalField;
+
+  XmlParserEntity() {}
 }

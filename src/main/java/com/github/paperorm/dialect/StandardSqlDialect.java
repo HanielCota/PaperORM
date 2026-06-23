@@ -6,7 +6,16 @@ import com.github.paperorm.mapping.EntityMetadata;
 import com.github.paperorm.mapping.TypeMapper;
 import java.util.StringJoiner;
 
-public final class StandardSqlDialect implements SqlDialect {
+public record StandardSqlDialect(DatabaseType databaseType) implements SqlDialect {
+
+  public enum DatabaseType {
+    SQLITE,
+    MYSQL
+  }
+
+  public StandardSqlDialect() {
+    this(DatabaseType.SQLITE);
+  }
 
   @Override
   public String createTable(EntityMetadata metadata) {
@@ -23,7 +32,7 @@ public final class StandardSqlDialect implements SqlDialect {
       definition.append(quoteIdentifier(column.columnName())).append(" ").append(sqlType(column));
 
       if (column.id() && column.autoIncrement()) {
-        definition.append(" PRIMARY KEY AUTOINCREMENT");
+        definition.append(" PRIMARY KEY ").append(autoIncrementKeyword());
         columnDefinitions.add(definition);
         continue;
       }
@@ -45,6 +54,10 @@ public final class StandardSqlDialect implements SqlDialect {
 
     sql.append(columnDefinitions).append(")");
     return sql.toString();
+  }
+
+  private String autoIncrementKeyword() {
+    return databaseType == DatabaseType.MYSQL ? "AUTO_INCREMENT" : "AUTOINCREMENT";
   }
 
   @Override
@@ -133,10 +146,13 @@ public final class StandardSqlDialect implements SqlDialect {
 
   @Override
   public String quoteIdentifier(String identifier) {
+    if (databaseType == DatabaseType.MYSQL) {
+      return "`" + identifier.replace("`", "``") + "`";
+    }
     return "\"" + identifier.replace("\"", "\"\"") + "\"";
   }
 
-  private String sqlType(ColumnMetadata column) {
+  private static String sqlType(ColumnMetadata column) {
     var type = column.field().getType();
     if (column.manyToOne()) {
       type = findIdTypeOf(column.referencedClass());
@@ -145,7 +161,7 @@ public final class StandardSqlDialect implements SqlDialect {
     return TypeMapper.sqlTypeFor(type);
   }
 
-  private Class<?> findIdTypeOf(Class<?> clazz) {
+  private static Class<?> findIdTypeOf(Class<?> clazz) {
     for (var field : clazz.getDeclaredFields()) {
       if (field.isAnnotationPresent(Id.class)) {
         return field.getType();
@@ -157,11 +173,22 @@ public final class StandardSqlDialect implements SqlDialect {
 
   @Override
   public String addColumn(String tableName, ColumnMetadata column) {
-    return "ALTER TABLE "
-        + quoteIdentifier(tableName)
-        + " ADD COLUMN "
-        + quoteIdentifier(column.columnName())
-        + " "
-        + sqlType(column);
+    var def = new StringBuilder();
+    def.append("ALTER TABLE ")
+        .append(quoteIdentifier(tableName))
+        .append(" ADD COLUMN ")
+        .append(quoteIdentifier(column.columnName()))
+        .append(" ")
+        .append(sqlType(column));
+
+    if (!column.nullable()) {
+      def.append(" NOT NULL");
+    }
+
+    if (column.unique() && databaseType == DatabaseType.MYSQL) {
+      def.append(" UNIQUE");
+    }
+
+    return def.toString();
   }
 }

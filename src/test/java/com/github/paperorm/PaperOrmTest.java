@@ -142,11 +142,12 @@ class PaperOrmTest {
     try {
       var repository = cacheOrm.getRepository(TestEntity.class);
 
-      var entity = new TestEntity(1L, "CacheTest", 10, true);
+      var entity = new TestEntity(null, "CacheTest", 10, true);
       repository.save(entity);
+      var savedId = entity.getId();
 
-      var first = repository.findById(1L);
-      var second = repository.findById(1L);
+      var first = repository.findById(savedId);
+      var second = repository.findById(savedId);
 
       assertTrue(first.isPresent());
       assertTrue(second.isPresent());
@@ -161,7 +162,7 @@ class PaperOrmTest {
       // Invalidate cache
       repository.clearCache();
 
-      var third = repository.findById(1L);
+      var third = repository.findById(savedId);
       assertTrue(third.isPresent());
       // After cache clear, it should be a new instance
       assertTrue(first.get() != third.get());
@@ -173,7 +174,7 @@ class PaperOrmTest {
 
   @Test
   void shouldPerformSessionScopedOperationsAndRollbackCleanly() {
-    var reward = new TestEntity(10L, "TxTest", 100, true);
+    var reward = new TestEntity(null, "TxTest", 100, true);
 
     try (var session = paperOrm.openSession()) {
       var repo = session.getRepository(TestEntity.class);
@@ -185,9 +186,10 @@ class PaperOrmTest {
                   throw new RuntimeException("Rollback session");
                 });
       } catch (RuntimeException ignored) {
+        // Expected: forced rollback
       }
 
-      var found = repo.findById(10L);
+      var found = repo.findById(-1L);
       assertTrue(
           found.isEmpty(),
           "Session cache should be cleared on rollback and database should not have the uncommitted entity");
@@ -196,7 +198,7 @@ class PaperOrmTest {
 
   @Test
   void shouldPerformSessionScopedOperationsAndRollbackCleanlyAsync() {
-    var reward = new TestEntity(11L, "TxTestAsync", 100, true);
+    var reward = new TestEntity(null, "TxTestAsync", 100, true);
 
     try (var session = paperOrm.openSession()) {
       var repo = session.getRepository(TestEntity.class);
@@ -211,7 +213,7 @@ class PaperOrmTest {
 
       assertThrows(Exception.class, future::join);
 
-      var found = repo.findById(11L);
+      var found = repo.findById(-1L);
       assertTrue(
           found.isEmpty(),
           "Session cache should be cleared on rollback and database should not have the uncommitted entity");
@@ -321,6 +323,7 @@ class PaperOrmTest {
     var orm = PaperOrm.builder().sqlite(dbPath).migrations(loadedMigrations).build();
 
     try {
+      orm.awaitMigrations();
       // Execute a manual check query to make sure columns exist
       try (var conn = orm.connection().openConnection();
           var stmt = conn.createStatement();
@@ -384,8 +387,6 @@ class CustomDataConverter implements TypeConverter<CustomData> {
     return new CustomData(parts[0], parts[1]);
   }
 }
-
-class DummyForLineSpacing {}
 
 @Entity
 @Table(name = "custom_repos")

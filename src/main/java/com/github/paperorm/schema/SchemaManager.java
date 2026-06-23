@@ -56,7 +56,16 @@ public final class SchemaManager {
 
       if (!existingColumns.contains(columnName)) {
         var alterSql = this.dialect.addColumn(tableName, column);
-        execute(alterSql);
+        try {
+          execute(alterSql);
+        } catch (OrmException exception) {
+          if (column.nullable() || !column.autoIncrement()) {
+            throw exception;
+          }
+          var fallbackSql = this.dialect.addColumn(tableName, column);
+          fallbackSql = fallbackSql.replace(" NOT NULL", "");
+          execute(fallbackSql);
+        }
       }
     }
   }

@@ -2,12 +2,18 @@ package com.github.paperorm.migration;
 
 import com.github.paperorm.database.DatabaseConnection;
 import com.github.paperorm.exception.ConnectionException;
+import com.github.paperorm.exception.OrmException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 public final class MigrationRunner {
 
@@ -25,7 +31,7 @@ public final class MigrationRunner {
         migrations.add(new Migration(version, "Migration V" + version, sql));
         version++;
       } catch (IOException exception) {
-        throw new RuntimeException("Failed to read migration resource: " + resourcePath, exception);
+        throw new OrmException("Failed to read migration resource: " + resourcePath, exception);
       }
     }
     return migrations;
@@ -47,7 +53,7 @@ public final class MigrationRunner {
         migrations.add(new Migration(version, "Migration V" + version, sql));
         version++;
       } catch (IOException exception) {
-        throw new RuntimeException("Failed to read migration file: " + file, exception);
+        throw new OrmException("Failed to read migration file: " + file, exception);
       }
     }
     return migrations;
@@ -61,7 +67,7 @@ public final class MigrationRunner {
     var pendingMigrations =
         migrations.stream()
             .filter(migration -> !appliedVersions.contains(migration.version()))
-            .sorted(java.util.Comparator.comparingInt(Migration::version))
+            .sorted(Comparator.comparingInt(Migration::version))
             .toList();
 
     for (var migration : pendingMigrations) {

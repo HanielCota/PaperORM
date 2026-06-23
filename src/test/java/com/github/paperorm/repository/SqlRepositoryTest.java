@@ -10,6 +10,10 @@ import com.github.paperorm.annotation.Column;
 import com.github.paperorm.annotation.Entity;
 import com.github.paperorm.annotation.Id;
 import com.github.paperorm.annotation.ManyToOne;
+import com.github.paperorm.annotation.PostLoad;
+import com.github.paperorm.annotation.PreDelete;
+import com.github.paperorm.annotation.PrePersist;
+import com.github.paperorm.annotation.PreUpdate;
 import com.github.paperorm.annotation.Table;
 import com.github.paperorm.annotation.Transient;
 import com.github.paperorm.database.SqliteDatabaseConnection;
@@ -185,6 +189,7 @@ class SqlRepositoryTest {
                 throw new RuntimeException("Rollback transaction");
               });
     } catch (RuntimeException ignored) {
+      // Expected: forced rollback
     }
 
     repository.clearCache();
@@ -295,6 +300,145 @@ class SqlRepositoryTest {
     // 2. Save second profile with duplicate UUID (should fail because of UNIQUE)
     assertThrows(Exception.class, () -> indexedRepo.save(new IndexedEntity(2L, "uuid-1")));
   }
+
+  @Test
+  void shouldWorkWithOrderByWithoutWhere() {
+    repository.ensureTable();
+    repository.save(new TestReward(1L, "Alpha", 10.0));
+    repository.save(new TestReward(2L, "Beta", 20.0));
+
+    var result = repository.select().orderBy("name", "ASC").list();
+    assertEquals(2, result.size());
+    assertEquals("Alpha", result.get(0).name);
+    assertEquals("Beta", result.get(1).name);
+  }
+
+  @Test
+  void shouldWorkWithLimitWithoutWhere() {
+    repository.ensureTable();
+    repository.save(new TestReward(1L, "A", 1.0));
+    repository.save(new TestReward(2L, "B", 2.0));
+
+    var result = repository.select().limit(1).list();
+    assertEquals(1, result.size());
+  }
+
+  @Test
+  void shouldFireLifecycleCallbacks() {
+    var cbRepo =
+        new SqlRepository<>(CallbackEntity.class, connection, scanner, dialect, typeMapper);
+    cbRepo.ensureTable();
+
+    var entity = new CallbackEntity();
+    entity.name = "CallbackTest";
+    cbRepo.save(entity);
+
+    assertTrue(entity.prePersistFired, "@PrePersist should have fired on save");
+    assertEquals("callback_name", entity.name, "@PrePersist should have modified name");
+
+    entity.name = "Updated";
+    entity.preUpdateFired = false;
+    cbRepo.update(entity);
+    assertTrue(entity.preUpdateFired, "@PreUpdate should have fired on update");
+
+    cbRepo.clearCache();
+    var loaded = cbRepo.findById(entity.id);
+    assertTrue(loaded.isPresent());
+    assertTrue(loaded.get().postLoadFired, "@PostLoad should have fired on findById");
+
+    cbRepo.delete(entity);
+    assertTrue(entity.preDeleteFired, "@PreDelete should have fired on delete");
+  }
+
+  @Test
+  void shouldWorkWithEnumField() {
+    var enumRepo = new SqlRepository<>(EnumEntity.class, connection, scanner, dialect, typeMapper);
+    enumRepo.ensureTable();
+
+    var entity = new EnumEntity();
+    entity.name = "EnumTest";
+    entity.status = Status.ACTIVE;
+    enumRepo.save(entity);
+
+    var found = enumRepo.findById(entity.id);
+    assertTrue(found.isPresent());
+    assertEquals(Status.ACTIVE, found.get().status);
+
+    found.get().status = Status.INACTIVE;
+    enumRepo.update(found.get());
+
+    var updated = enumRepo.findById(entity.id);
+    assertTrue(updated.isPresent());
+    assertEquals(Status.INACTIVE, updated.get().status);
+  }
+
+  @Test
+  void shouldQueryWithNotEqAndLessThan() {
+    repository.ensureTable();
+    repository.save(new TestReward(1L, "A", 10.0));
+    repository.save(new TestReward(2L, "B", 20.0));
+    repository.save(new TestReward(3L, "C", 30.0));
+
+    var notEq = repository.select().where("amount").notEq(20.0).list();
+    assertEquals(2, notEq.size());
+
+    var lessThan = repository.select().where("amount").lessThan(25.0).list();
+    assertEquals(2, lessThan.size());
+  }
+}
+
+@Entity
+@Table(name = "callback_entities")
+class CallbackEntity {
+  @Id(autoIncrement = true)
+  Long id;
+
+  @Column String name;
+  boolean prePersistFired = false;
+  boolean preUpdateFired = false;
+  boolean postLoadFired = false;
+  boolean preDeleteFired = false;
+
+  CallbackEntity() {}
+
+  @PrePersist
+  void onPrePersist() {
+    this.prePersistFired = true;
+    this.name = "callback_name";
+  }
+
+  @PreUpdate
+  void onPreUpdate() {
+    this.preUpdateFired = true;
+  }
+
+  @PostLoad
+  void onPostLoad() {
+    this.postLoadFired = true;
+  }
+
+  @PreDelete
+  void onPreDelete() {
+    this.preDeleteFired = true;
+  }
+}
+
+enum Status {
+  ACTIVE,
+  INACTIVE
+}
+
+@Entity
+@Table(name = "enum_entities")
+class EnumEntity {
+  @Id(autoIncrement = true)
+  Long id;
+
+  @Column String name;
+
+  @Column Status status;
+
+  EnumEntity() {}
 }
 
 @Entity

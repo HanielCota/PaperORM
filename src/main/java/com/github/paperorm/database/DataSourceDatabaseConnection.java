@@ -91,7 +91,10 @@ public class DataSourceDatabaseConnection implements DatabaseConnection {
         }
       } finally {
         activeTransactionConnection.remove();
-        connection.setAutoCommit(originalAutoCommit);
+        try {
+          connection.setAutoCommit(originalAutoCommit);
+        } catch (SQLException ignored) {
+        }
       }
     } catch (SQLException exception) {
       throw new ConnectionException("Failed to open connection for transaction", exception);

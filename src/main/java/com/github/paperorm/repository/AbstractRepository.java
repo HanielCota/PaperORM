@@ -131,6 +131,16 @@ public abstract class AbstractRepository<T> implements Repository<T> {
   }
 
   @Override
+  public List<T> find(Specification<T> spec) {
+    return this.delegate.find(spec);
+  }
+
+  @Override
+  public CompletableFuture<List<T>> findAsync(Specification<T> spec) {
+    return this.delegate.findAsync(spec);
+  }
+
+  @Override
   public Query<T> select() {
     return this.delegate.select();
   }
