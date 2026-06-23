@@ -54,6 +54,55 @@ com.github.paperorm
 
 ## 📖 Guia de Uso
 
+### 📦 Instalação
+
+Adicione o repositório do JitPack e a dependência do **PaperORM** no seu arquivo de build (`build.gradle.kts` ou `pom.xml`):
+
+#### Gradle (Kotlin DSL)
+
+```kotlin
+repositories {
+    mavenCentral()
+    maven("https://jitpack.io")
+}
+
+dependencies {
+    implementation("com.github.HanielCota:PaperORM:Tag") // Substitua 'Tag' pela versão desejada ou commit hash
+}
+```
+
+#### Gradle (Groovy)
+
+```groovy
+repositories {
+    mavenCentral()
+    maven { url 'https://jitpack.io' }
+}
+
+dependencies {
+    implementation 'com.github.HanielCota:PaperORM:Tag' // Substitua 'Tag' pela versão desejada ou commit hash
+}
+```
+
+#### Maven
+
+```xml
+<repositories>
+    <repository>
+        <id>jitpack.io</id>
+        <url>https://jitpack.io</url>
+    </repository>
+</repositories>
+
+<dependency>
+    <groupId>com.github.HanielCota</groupId>
+    <artifactId>PaperORM</artifactId>
+    <version>Tag</version> <!-- Substitua 'Tag' pela versão desejada ou commit hash -->
+</dependency>
+```
+
+---
+
 ### 1. Definindo as Entidades
 
 ```java
