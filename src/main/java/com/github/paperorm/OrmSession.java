@@ -58,6 +58,18 @@ public final class OrmSession implements AutoCloseable {
     }
   }
 
+  public <T> java.util.concurrent.CompletableFuture<T> runInTransactionAsync(
+      TransactionCallback<T> callback) {
+    return java.util.concurrent.CompletableFuture.supplyAsync(
+        () -> runInTransaction(callback), this.factory.executor());
+  }
+
+  public java.util.concurrent.CompletableFuture<Void> runInTransactionAsync(
+      VoidTransactionCallback callback) {
+    return java.util.concurrent.CompletableFuture.runAsync(
+        () -> runInTransaction(callback), this.factory.executor());
+  }
+
   @Override
   public void close() {
     clearCache();

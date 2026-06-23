@@ -174,6 +174,30 @@ class PaperOrmTest {
   }
 
   @Test
+  void shouldPerformSessionScopedOperationsAndRollbackCleanlyAsync() {
+    var reward = new TestEntity(11L, "TxTestAsync", 100, true);
+
+    try (var session = paperOrm.openSession()) {
+      var repo = session.getRepository(TestEntity.class);
+
+      var future =
+          session.runInTransactionAsync(
+              (com.github.paperorm.database.VoidTransactionCallback)
+                  conn -> {
+                    repo.save(reward);
+                    throw new RuntimeException("Rollback session async");
+                  });
+
+      assertThrows(Exception.class, future::join);
+
+      var found = repo.findById(11L);
+      assertTrue(
+          found.isEmpty(),
+          "Session cache should be cleared on rollback and database should not have the uncommitted entity");
+    }
+  }
+
+  @Test
   void shouldWorkWithFluentQueryBuilder() {
     var repository = paperOrm.getRepository(TestEntity.class);
 

@@ -77,4 +77,8 @@ public final class OrmFactory {
   public <T> Repository<T> createRepository(Class<T> entityClass, OrmSession session) {
     return new SqlRepository<>(entityClass, session, scanner, dialect, typeMapper, executor);
   }
+
+  public Executor executor() {
+    return this.executor;
+  }
 }
