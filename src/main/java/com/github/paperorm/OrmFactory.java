@@ -48,11 +48,19 @@ public final class OrmFactory {
 
   public <T> Repository<T> createRepository(Class<T> entityClass) {
     return new SqlRepository<>(
-        entityClass, connection, scanner, dialect, typeMapper, executor, useCache, migrationsFuture);
+        entityClass,
+        connection,
+        scanner,
+        dialect,
+        typeMapper,
+        executor,
+        useCache,
+        migrationsFuture);
   }
 
   public <T> Repository<T> createRepository(Class<T> entityClass, OrmSession session) {
-    return new SqlRepository<>(entityClass, session, scanner, dialect, typeMapper, executor, migrationsFuture);
+    return new SqlRepository<>(
+        entityClass, session, scanner, dialect, typeMapper, executor, migrationsFuture);
   }
 
   public Executor executor() {

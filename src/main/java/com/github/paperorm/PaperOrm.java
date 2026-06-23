@@ -246,8 +246,7 @@ public final class PaperOrm implements AutoCloseable {
           var runner = new MigrationRunner();
           var migrationList = List.copyOf(this.migrations);
           migrationsFuture =
-              CompletableFuture.runAsync(
-                  () -> runner.run(finalConn, migrationList), this.executor);
+              CompletableFuture.runAsync(() -> runner.run(finalConn, migrationList), this.executor);
         }
 
         var factory =
