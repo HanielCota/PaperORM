@@ -1,17 +1,26 @@
 package com.github.paperorm;
 
+import com.github.paperorm.database.DataSourceDatabaseConnection;
 import com.github.paperorm.database.DatabaseConnection;
 import com.github.paperorm.database.SqliteDatabaseConnection;
 import com.github.paperorm.dialect.SqlDialect;
 import com.github.paperorm.dialect.StandardSqlDialect;
 import com.github.paperorm.mapping.EntityScanner;
 import com.github.paperorm.mapping.ReflectionEntityScanner;
+import com.github.paperorm.mapping.TypeConverter;
 import com.github.paperorm.mapping.TypeMapper;
 import com.github.paperorm.repository.Repository;
+import com.google.gson.Gson;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import java.nio.file.Path;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 
 public final class PaperOrm implements AutoCloseable {
@@ -42,7 +51,7 @@ public final class PaperOrm implements AutoCloseable {
     return new Builder();
   }
 
-  public static PaperOrm sqlite(java.nio.file.Path path, Class<?>... entities) {
+  public static PaperOrm sqlite(Path path, Class<?>... entities) {
     var builder = builder().sqlite(path).useVirtualThreads().autoCreateTables(true);
     for (var entity : entities) {
       builder.registerEntity(entity);
@@ -96,7 +105,7 @@ public final class PaperOrm implements AutoCloseable {
     }
 
     public Builder mysql(String host, int port, String database, String username, String password) {
-      var config = new com.zaxxer.hikari.HikariConfig();
+      var config = new HikariConfig();
       config.setJdbcUrl("jdbc:mysql://" + host + ":" + port + "/" + database);
       config.setUsername(username);
       config.setPassword(password);
@@ -106,9 +115,7 @@ public final class PaperOrm implements AutoCloseable {
       config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
       config.addDataSourceProperty("useServerPrepStmts", "true");
 
-      this.connection =
-          new com.github.paperorm.database.DataSourceDatabaseConnection(
-              new com.zaxxer.hikari.HikariDataSource(config));
+      this.connection = new DataSourceDatabaseConnection(new HikariDataSource(config));
       return this;
     }
 
@@ -118,7 +125,7 @@ public final class PaperOrm implements AutoCloseable {
     }
 
     public Builder useVirtualThreads() {
-      this.executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
+      this.executor = Executors.newVirtualThreadPerTaskExecutor();
       return this;
     }
 
@@ -137,15 +144,15 @@ public final class PaperOrm implements AutoCloseable {
       return this;
     }
 
-    public <T> Builder registerConverter(com.github.paperorm.mapping.TypeConverter<T> converter) {
+    public <T> Builder registerConverter(TypeConverter<T> converter) {
       this.typeMapper.registerConverter(converter);
       return this;
     }
 
     public <T> Builder registerJsonConverter(Class<T> type) {
       this.typeMapper.registerConverter(
-          new com.github.paperorm.mapping.TypeConverter<T>() {
-            private final com.google.gson.Gson gson = new com.google.gson.Gson();
+          new TypeConverter<T>() {
+            private final Gson gson = new Gson();
 
             @Override
             public Class<T> getType() {
@@ -153,8 +160,8 @@ public final class PaperOrm implements AutoCloseable {
             }
 
             @Override
-            public void setParameter(java.sql.PreparedStatement statement, int index, T value)
-                throws java.sql.SQLException {
+            public void setParameter(PreparedStatement statement, int index, T value)
+                throws SQLException {
               if (value == null) {
                 statement.setString(index, null);
               } else {
@@ -163,8 +170,7 @@ public final class PaperOrm implements AutoCloseable {
             }
 
             @Override
-            public T readValue(java.sql.ResultSet resultSet, String columnName)
-                throws java.sql.SQLException {
+            public T readValue(ResultSet resultSet, String columnName) throws SQLException {
               var raw = resultSet.getString(columnName);
               if (raw == null) {
                 return null;
