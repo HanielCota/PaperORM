@@ -6,6 +6,7 @@ import com.github.paperorm.database.VoidTransactionCallback;
 import com.github.paperorm.repository.Repository;
 import java.lang.ref.WeakReference;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -58,16 +59,12 @@ public final class OrmSession implements AutoCloseable {
     }
   }
 
-  public <T> java.util.concurrent.CompletableFuture<T> runInTransactionAsync(
-      TransactionCallback<T> callback) {
-    return java.util.concurrent.CompletableFuture.supplyAsync(
-        () -> runInTransaction(callback), this.factory.executor());
+  public <T> CompletableFuture<T> runInTransactionAsync(TransactionCallback<T> callback) {
+    return CompletableFuture.supplyAsync(() -> runInTransaction(callback), this.factory.executor());
   }
 
-  public java.util.concurrent.CompletableFuture<Void> runInTransactionAsync(
-      VoidTransactionCallback callback) {
-    return java.util.concurrent.CompletableFuture.runAsync(
-        () -> runInTransaction(callback), this.factory.executor());
+  public CompletableFuture<Void> runInTransactionAsync(VoidTransactionCallback callback) {
+    return CompletableFuture.runAsync(() -> runInTransaction(callback), this.factory.executor());
   }
 
   @Override

@@ -2,6 +2,10 @@ package com.github.paperorm.migration;
 
 import com.github.paperorm.database.DatabaseConnection;
 import com.github.paperorm.exception.ConnectionException;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.*;
 
@@ -17,32 +21,32 @@ public final class MigrationRunner {
         if (is == null) {
           break;
         }
-        var sql = new String(is.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        var sql = new String(is.readAllBytes(), StandardCharsets.UTF_8);
         migrations.add(new Migration(version, "Migration V" + version, sql));
         version++;
-      } catch (java.io.IOException exception) {
+      } catch (IOException exception) {
         throw new RuntimeException("Failed to read migration resource: " + resourcePath, exception);
       }
     }
     return migrations;
   }
 
-  public static List<Migration> loadFromDirectory(java.nio.file.Path directory) {
-    if (!java.nio.file.Files.isDirectory(directory)) {
+  public static List<Migration> loadFromDirectory(Path directory) {
+    if (!Files.isDirectory(directory)) {
       return Collections.emptyList();
     }
     var migrations = new ArrayList<Migration>();
     int version = 1;
     while (true) {
       var file = directory.resolve("V" + version + ".sql");
-      if (!java.nio.file.Files.exists(file)) {
+      if (!Files.exists(file)) {
         break;
       }
       try {
-        var sql = java.nio.file.Files.readString(file, java.nio.charset.StandardCharsets.UTF_8);
+        var sql = Files.readString(file, StandardCharsets.UTF_8);
         migrations.add(new Migration(version, "Migration V" + version, sql));
         version++;
-      } catch (java.io.IOException exception) {
+      } catch (IOException exception) {
         throw new RuntimeException("Failed to read migration file: " + file, exception);
       }
     }

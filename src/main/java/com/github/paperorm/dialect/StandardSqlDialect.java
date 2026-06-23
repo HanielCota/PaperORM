@@ -1,5 +1,6 @@
 package com.github.paperorm.dialect;
 
+import com.github.paperorm.annotation.Id;
 import com.github.paperorm.mapping.ColumnMetadata;
 import com.github.paperorm.mapping.EntityMetadata;
 import com.github.paperorm.mapping.TypeMapper;
@@ -146,7 +147,7 @@ public final class StandardSqlDialect implements SqlDialect {
 
   private Class<?> findIdTypeOf(Class<?> clazz) {
     for (var field : clazz.getDeclaredFields()) {
-      if (field.isAnnotationPresent(com.github.paperorm.annotation.Id.class)) {
+      if (field.isAnnotationPresent(Id.class)) {
         return field.getType();
       }
     }
