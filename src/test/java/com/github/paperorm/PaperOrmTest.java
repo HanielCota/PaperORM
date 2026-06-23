@@ -1,6 +1,7 @@
 package com.github.paperorm;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -281,6 +282,54 @@ class PaperOrmTest {
       assertTrue(found.isPresent());
       assertEquals("GsonIsAwesome", found.get().info.text);
       assertEquals(42, found.get().info.code);
+    } finally {
+      orm.close();
+    }
+  }
+
+  @Test
+  void shouldApplyMigrationsFromDirectory() throws java.io.IOException {
+    var migrationsDir = tempDir.resolve("migrations");
+    java.nio.file.Files.createDirectories(migrationsDir);
+
+    // Create migration V1.sql
+    var v1 = migrationsDir.resolve("V1.sql");
+    java.nio.file.Files.writeString(
+        v1,
+        """
+        CREATE TABLE players_migrated (
+            id INTEGER PRIMARY KEY,
+            username TEXT NOT NULL
+        );
+        """);
+
+    // Create migration V2.sql
+    var v2 = migrationsDir.resolve("V2.sql");
+    java.nio.file.Files.writeString(
+        v2,
+        """
+        ALTER TABLE players_migrated ADD COLUMN points INTEGER DEFAULT 0;
+        """);
+
+    var loadedMigrations =
+        com.github.paperorm.migration.MigrationRunner.loadFromDirectory(migrationsDir);
+    assertEquals(2, loadedMigrations.size());
+    assertEquals(1, loadedMigrations.get(0).version());
+    assertEquals(2, loadedMigrations.get(1).version());
+
+    var dbPath = tempDir.resolve("migration_test.db");
+    var orm = PaperOrm.builder().sqlite(dbPath).migrations(loadedMigrations).build();
+
+    try {
+      // Execute a manual check query to make sure columns exist
+      try (var conn = orm.connection().openConnection();
+          var stmt = conn.createStatement();
+          var rs = stmt.executeQuery("SELECT points FROM players_migrated")) {
+        // Should succeed without throwing exception since points column was added by V2 migration
+        assertFalse(rs.next());
+      } catch (SQLException e) {
+        throw new RuntimeException("Migration failed", e);
+      }
     } finally {
       orm.close();
     }

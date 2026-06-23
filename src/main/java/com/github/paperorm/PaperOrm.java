@@ -9,6 +9,8 @@ import com.github.paperorm.mapping.EntityScanner;
 import com.github.paperorm.mapping.ReflectionEntityScanner;
 import com.github.paperorm.mapping.TypeConverter;
 import com.github.paperorm.mapping.TypeMapper;
+import com.github.paperorm.migration.Migration;
+import com.github.paperorm.migration.MigrationRunner;
 import com.github.paperorm.repository.Repository;
 import com.google.gson.Gson;
 import com.zaxxer.hikari.HikariConfig;
@@ -90,6 +92,7 @@ public final class PaperOrm implements AutoCloseable {
     private boolean autoCreateTables = false;
     private boolean useCache = true;
     private Logger logger;
+    private final List<Migration> migrations = new ArrayList<>();
 
     public Builder useCache(boolean useCache) {
       this.useCache = useCache;
@@ -108,6 +111,13 @@ public final class PaperOrm implements AutoCloseable {
 
     public Builder logger(Logger logger) {
       this.logger = logger;
+      return this;
+    }
+
+    public Builder migrations(List<Migration> migrations) {
+      if (migrations != null) {
+        this.migrations.addAll(migrations);
+      }
       return this;
     }
 
@@ -208,6 +218,10 @@ public final class PaperOrm implements AutoCloseable {
 
       if (conn == null) {
         conn = new SqliteDatabaseConnection(path, this.logger);
+      }
+
+      if (!this.migrations.isEmpty()) {
+        new MigrationRunner().run(conn, this.migrations);
       }
 
       var factory =

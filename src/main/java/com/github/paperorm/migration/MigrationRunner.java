@@ -7,6 +7,48 @@ import java.util.*;
 
 public final class MigrationRunner {
 
+  public static List<Migration> loadFromClasspath(ClassLoader classLoader, String directoryPath) {
+    var prefix = directoryPath.endsWith("/") ? directoryPath : directoryPath + "/";
+    var migrations = new ArrayList<Migration>();
+    int version = 1;
+    while (true) {
+      var resourcePath = prefix + "V" + version + ".sql";
+      try (var is = classLoader.getResourceAsStream(resourcePath)) {
+        if (is == null) {
+          break;
+        }
+        var sql = new String(is.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        migrations.add(new Migration(version, "Migration V" + version, sql));
+        version++;
+      } catch (java.io.IOException exception) {
+        throw new RuntimeException("Failed to read migration resource: " + resourcePath, exception);
+      }
+    }
+    return migrations;
+  }
+
+  public static List<Migration> loadFromDirectory(java.nio.file.Path directory) {
+    if (!java.nio.file.Files.isDirectory(directory)) {
+      return Collections.emptyList();
+    }
+    var migrations = new ArrayList<Migration>();
+    int version = 1;
+    while (true) {
+      var file = directory.resolve("V" + version + ".sql");
+      if (!java.nio.file.Files.exists(file)) {
+        break;
+      }
+      try {
+        var sql = java.nio.file.Files.readString(file, java.nio.charset.StandardCharsets.UTF_8);
+        migrations.add(new Migration(version, "Migration V" + version, sql));
+        version++;
+      } catch (java.io.IOException exception) {
+        throw new RuntimeException("Failed to read migration file: " + file, exception);
+      }
+    }
+    return migrations;
+  }
+
   public void run(DatabaseConnection connection, List<Migration> migrations) {
     ensureMigrationTable(connection);
 
