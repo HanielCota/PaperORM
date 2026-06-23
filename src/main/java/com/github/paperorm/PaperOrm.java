@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
+import java.util.logging.Logger;
 
 public final class PaperOrm implements AutoCloseable {
 
@@ -88,6 +89,7 @@ public final class PaperOrm implements AutoCloseable {
     private final List<Class<?>> registeredEntities = new ArrayList<>();
     private boolean autoCreateTables = false;
     private boolean useCache = true;
+    private Logger logger;
 
     public Builder useCache(boolean useCache) {
       this.useCache = useCache;
@@ -104,6 +106,11 @@ public final class PaperOrm implements AutoCloseable {
       return this;
     }
 
+    public Builder logger(Logger logger) {
+      this.logger = logger;
+      return this;
+    }
+
     public Builder mysql(String host, int port, String database, String username, String password) {
       var config = new HikariConfig();
       config.setJdbcUrl("jdbc:mysql://" + host + ":" + port + "/" + database);
@@ -115,7 +122,7 @@ public final class PaperOrm implements AutoCloseable {
       config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
       config.addDataSourceProperty("useServerPrepStmts", "true");
 
-      this.connection = new DataSourceDatabaseConnection(new HikariDataSource(config));
+      this.connection = new DataSourceDatabaseConnection(new HikariDataSource(config), this.logger);
       return this;
     }
 
@@ -200,7 +207,7 @@ public final class PaperOrm implements AutoCloseable {
       }
 
       if (conn == null) {
-        conn = new SqliteDatabaseConnection(path);
+        conn = new SqliteDatabaseConnection(path, this.logger);
       }
 
       var factory =

@@ -3,22 +3,24 @@ package com.github.paperorm.database;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import java.nio.file.Path;
+import java.util.logging.Logger;
 
 public final class SqliteDatabaseConnection extends DataSourceDatabaseConnection {
 
-  private static final System.Logger LOGGER =
-      System.getLogger(SqliteDatabaseConnection.class.getName());
-
   public SqliteDatabaseConnection(Path databasePath) {
-    super(createSqliteDataSource(databasePath));
+    this(databasePath, null);
   }
 
-  private static HikariDataSource createSqliteDataSource(Path databasePath) {
+  public SqliteDatabaseConnection(Path databasePath, Logger logger) {
+    super(createSqliteDataSource(databasePath, logger), logger);
+  }
+
+  private static HikariDataSource createSqliteDataSource(Path databasePath, Logger logger) {
+    var activeLogger =
+        logger != null ? logger : Logger.getLogger(SqliteDatabaseConnection.class.getName());
     var url = "jdbc:sqlite:" + databasePath.toAbsolutePath();
-    LOGGER.log(
-        System.Logger.Level.INFO,
-        "Initializing SQLite Database connection pool at path: {0}",
-        databasePath.toAbsolutePath());
+    activeLogger.info(
+        "Initializing SQLite Database connection pool at path: " + databasePath.toAbsolutePath());
 
     var config = new HikariConfig();
     config.setJdbcUrl(url);

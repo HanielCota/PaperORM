@@ -5,18 +5,24 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.sql.DataSource;
 
 public class DataSourceDatabaseConnection implements DatabaseConnection {
 
-  private static final System.Logger LOGGER =
-      System.getLogger(DataSourceDatabaseConnection.class.getName());
-
   private final DataSource dataSource;
+  private final Logger logger;
   private final ThreadLocal<Connection> activeTransactionConnection = new ThreadLocal<>();
 
   public DataSourceDatabaseConnection(DataSource dataSource) {
+    this(dataSource, null);
+  }
+
+  public DataSourceDatabaseConnection(DataSource dataSource, Logger logger) {
     this.dataSource = dataSource;
+    this.logger =
+        logger != null ? logger : Logger.getLogger(DataSourceDatabaseConnection.class.getName());
   }
 
   @Override
@@ -70,10 +76,7 @@ public class DataSourceDatabaseConnection implements DatabaseConnection {
         connection.commit();
         return result;
       } catch (Exception exception) {
-        LOGGER.log(
-            System.Logger.Level.ERROR,
-            "Transaction failed, rolling back changes in database",
-            exception);
+        logger.log(Level.SEVERE, "Transaction failed, rolling back changes in database", exception);
         try {
           connection.rollback();
         } catch (SQLException rollbackException) {
@@ -99,10 +102,10 @@ public class DataSourceDatabaseConnection implements DatabaseConnection {
   public void close() {
     if (this.dataSource instanceof AutoCloseable closeable) {
       try {
-        LOGGER.log(System.Logger.Level.INFO, "Closing Database connection pool.");
+        logger.info("Closing Database connection pool.");
         closeable.close();
       } catch (Exception exception) {
-        LOGGER.log(System.Logger.Level.ERROR, "Failed to close DataSource", exception);
+        logger.log(Level.SEVERE, "Failed to close DataSource", exception);
       }
     }
   }

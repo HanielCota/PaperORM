@@ -110,6 +110,26 @@ class PaperOrmTest {
   }
 
   @Test
+  void shouldWorkWithCustomLogger() {
+    var logger = java.util.logging.Logger.getLogger("TestLogger");
+    var loggerOrm =
+        PaperOrm.builder()
+            .sqlite(tempDir.resolve("logger.db"))
+            .logger(logger)
+            .registerEntity(TestEntity.class)
+            .autoCreateTables(true)
+            .build();
+    try {
+      var repository = loggerOrm.getRepository(TestEntity.class);
+      var testEntity = new TestEntity(null, "LoggerTest", 1, true);
+      repository.save(testEntity);
+      assertTrue(repository.findById(testEntity.getId()).isPresent());
+    } finally {
+      loggerOrm.close();
+    }
+  }
+
+  @Test
   void shouldReuseCachedInstancesToPreserveIdentity() {
     var cacheOrm =
         PaperOrm.builder()
