@@ -34,6 +34,8 @@ public interface Query<T> {
 
   Query<T> limit(int limit);
 
+  Query<T> offset(int offset);
+
   List<T> list();
 
   CompletableFuture<List<T>> listAsync();

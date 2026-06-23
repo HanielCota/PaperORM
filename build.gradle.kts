@@ -24,6 +24,9 @@ dependencies {
     testImplementation(platform("org.junit:junit-bom:5.12.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("com.google.code.gson:gson:2.11.0")
+    testImplementation("org.testcontainers:junit-jupiter:1.20.1")
+    testImplementation("org.testcontainers:mysql:1.20.1")
+    testImplementation("com.mysql:mysql-connector-j:9.0.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
     testCompileOnly("org.projectlombok:lombok:1.18.46")

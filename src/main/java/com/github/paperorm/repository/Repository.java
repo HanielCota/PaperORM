@@ -12,6 +12,8 @@ public interface Repository<T> {
 
   void update(T entity);
 
+  void delete(T entity);
+
   void deleteById(Object id);
 
   Optional<T> findById(Object id);
@@ -27,6 +29,8 @@ public interface Repository<T> {
   CompletableFuture<Void> saveAsync(T entity);
 
   CompletableFuture<Void> updateAsync(T entity);
+
+  CompletableFuture<Void> deleteAsync(T entity);
 
   CompletableFuture<Void> deleteByIdAsync(Object id);
 

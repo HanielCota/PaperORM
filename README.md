@@ -29,6 +29,7 @@
   * `@Column(unique = true)` para integridade referencial nativa no banco.
   * Mapeamento de objetos complexos (JSON) usando conversor automático baseado em **Gson**.
 * 🔄 **Transações Assíncronas**: APIs fluidas `runInTransactionAsync` com suporte automático a rollback integrado e limpeza de cache de primeiro nível.
+* 🚀 **Eventos de Ciclo de Vida**: Callbacks embutidos via anotações (`@PrePersist`, `@PostLoad`, `@PreDelete`) que automatizam fluxos sem poluir os repositórios.
 * 📂 **Migrações Automáticas**: Gerenciador de migrações em lote para ler e aplicar arquivos de migração SQL (`V1.sql`, `V2.sql`, etc.) direto do Classpath (pasta resources) ou do diretório do plugin.
 * 🏛️ **Repositórios Estendíveis**: Classe utilitária `AbstractRepository<T>` protegida para facilitar a codificação de repositórios customizados com regras de negócios específicas do plugin.
 * 🔌 **Integração de Logs**: Canalize os logs de depuração e conexões do ORM diretamente para o Logger do plugin Bukkit (`plugin.getLogger()`).
@@ -226,18 +227,49 @@ public final class PlayerRepository extends AbstractRepository<PlayerProfile> {
 ```java
 var repository = orm.getRepository(PlayerProfile.class);
 
-// Busca combinada com ordenação, IS NOT NULL e limite
+// Busca combinada com ordenação, IS NOT NULL, limite e paginação
 List<PlayerProfile> leaders = repository.select()
     .where("coins").greaterThan(1000)
     .and("active").isNotNull()
     .orderBy("coins", "DESC")
     .limit(10)
+    .offset(0) // Paginação suportada!
     .list();
 
 // Busca usando operador IN
 List<PlayerProfile> selected = repository.select()
     .where("name").in("Haniel", "Cota", "Paper")
     .list();
+```
+
+---
+
+### 7. Eventos de Ciclo de Vida (Callbacks)
+
+Crie métodos anotados dentro das suas entidades para executar lógica automaticamente antes ou depois de operações no banco de dados. Muito útil para inicializações ou sincronizações:
+
+```java
+@Entity
+@Table(name = "players")
+public class PlayerProfile {
+
+    @PrePersist
+    private void onPrePersist() {
+        // Chamado sempre antes de ser salvo ou atualizado no banco
+        if (this.uuid == null) this.uuid = UUID.randomUUID();
+    }
+
+    @PostLoad
+    private void onPostLoad() {
+        // Chamado sempre após a entidade ser carregada do banco
+        this.isOnline = Bukkit.getPlayer(this.uuid) != null;
+    }
+
+    @PreDelete
+    private void onPreDelete() {
+        // Chamado antes de excluir o registro do banco de dados
+    }
+}
 ```
 
 ---

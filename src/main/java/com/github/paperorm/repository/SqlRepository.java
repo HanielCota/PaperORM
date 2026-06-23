@@ -99,6 +99,7 @@ public final class SqlRepository<T> implements Repository<T> {
 
   @Override
   public void save(T entity) {
+    fireEvent(entity, com.github.paperorm.annotation.PrePersist.class);
     var sql = this.dialect.insert(this.metadata);
     var idColumn = this.metadata.idColumn();
     var autoIncrement = idColumn.autoIncrement();
@@ -144,6 +145,7 @@ public final class SqlRepository<T> implements Repository<T> {
 
   @Override
   public void update(T entity) {
+    fireEvent(entity, com.github.paperorm.annotation.PrePersist.class);
     var idColumn = this.metadata.idColumn();
     var idValue = this.entityMapper.readField(idColumn, entity);
     if (idValue == null) {
@@ -178,6 +180,16 @@ public final class SqlRepository<T> implements Repository<T> {
     } catch (SQLException exception) {
       throw new OrmException("Failed to update entity", exception);
     }
+  }
+
+  @Override
+  public void delete(T entity) {
+    if (entity == null) {
+      throw new IllegalArgumentException("Entity cannot be null");
+    }
+    fireEvent(entity, com.github.paperorm.annotation.PreDelete.class);
+    var idValue = this.entityMapper.readField(this.metadata.idColumn(), entity);
+    deleteById(idValue);
   }
 
   @Override
@@ -232,6 +244,7 @@ public final class SqlRepository<T> implements Repository<T> {
 
         var columns = this.metadata.columns();
         var entity = this.entityMapper.mapRow(resultSet, columns);
+        fireEvent(entity, com.github.paperorm.annotation.PostLoad.class);
         return Optional.of(cacheOrGet(entity));
       }
     } catch (SQLException exception) {
@@ -251,6 +264,7 @@ public final class SqlRepository<T> implements Repository<T> {
 
       while (resultSet.next()) {
         var entity = this.entityMapper.mapRow(resultSet, columns);
+        fireEvent(entity, com.github.paperorm.annotation.PostLoad.class);
         entities.add(cacheOrGet(entity));
       }
 
@@ -276,6 +290,7 @@ public final class SqlRepository<T> implements Repository<T> {
 
         while (resultSet.next()) {
           var entity = this.entityMapper.mapRow(resultSet, columns);
+          fireEvent(entity, com.github.paperorm.annotation.PostLoad.class);
           entities.add(cacheOrGet(entity));
         }
 
@@ -334,6 +349,11 @@ public final class SqlRepository<T> implements Repository<T> {
   @Override
   public CompletableFuture<Void> updateAsync(T entity) {
     return CompletableFuture.runAsync(() -> update(entity), this.executor);
+  }
+
+  @Override
+  public CompletableFuture<Void> deleteAsync(T entity) {
+    return CompletableFuture.runAsync(() -> delete(entity), this.executor);
   }
 
   @Override
@@ -411,6 +431,7 @@ public final class SqlRepository<T> implements Repository<T> {
 
         while (resultSet.next()) {
           var entity = this.entityMapper.mapRow(resultSet, columns);
+          fireEvent(entity, com.github.paperorm.annotation.PostLoad.class);
           entities.add(cacheOrGet(entity));
         }
 
@@ -429,5 +450,27 @@ public final class SqlRepository<T> implements Repository<T> {
   @Override
   public Query<T> select() {
     return new SqlQuery<>(this, this.dialect);
+  }
+
+  private void fireEvent(
+      T entity, Class<? extends java.lang.annotation.Annotation> annotationClass) {
+    if (entity == null) {
+      return;
+    }
+    for (var method : entity.getClass().getDeclaredMethods()) {
+      if (method.isAnnotationPresent(annotationClass)) {
+        try {
+          method.setAccessible(true);
+          method.invoke(entity);
+        } catch (Exception e) {
+          throw new OrmException(
+              "Failed to invoke @"
+                  + annotationClass.getSimpleName()
+                  + " method on "
+                  + entity.getClass().getSimpleName(),
+              e);
+        }
+      }
+    }
   }
 }

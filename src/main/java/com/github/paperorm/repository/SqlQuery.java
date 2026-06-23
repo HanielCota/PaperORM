@@ -156,6 +156,12 @@ public final class SqlQuery<T> implements Query<T> {
   }
 
   @Override
+  public Query<T> offset(int offset) {
+    this.whereClause.append(" OFFSET ").append(offset);
+    return this;
+  }
+
+  @Override
   public List<T> list() {
     var sql = this.whereClause.toString();
     var params = this.parameters.toArray();

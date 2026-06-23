@@ -41,6 +41,11 @@ public abstract class AbstractRepository<T> implements Repository<T> {
   }
 
   @Override
+  public void delete(T entity) {
+    this.delegate.delete(entity);
+  }
+
+  @Override
   public void deleteById(Object id) {
     this.delegate.deleteById(id);
   }
@@ -78,6 +83,11 @@ public abstract class AbstractRepository<T> implements Repository<T> {
   @Override
   public CompletableFuture<Void> updateAsync(T entity) {
     return this.delegate.updateAsync(entity);
+  }
+
+  @Override
+  public CompletableFuture<Void> deleteAsync(T entity) {
+    return this.delegate.deleteAsync(entity);
   }
 
   @Override
