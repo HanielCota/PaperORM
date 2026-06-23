@@ -2,18 +2,19 @@
 
 # 🔌 PaperORM
 
-### *Um framework ORM leve, assíncrono e de alto desempenho para plugins PaperSpigot.*
+### *Um framework ORM leve, assíncrono, robusto e de alto desempenho projetado sob medida para plugins PaperSpigot.*
 
 <p align="center">
   <img src="https://img.shields.io/badge/Java-21-orange?style=for-the-badge&logo=openjdk&logoColor=white" alt="Java 21" />
   <img src="https://img.shields.io/badge/Platform-PaperSpigot-cyan?style=for-the-badge&logo=minecraft&logoColor=white" alt="PaperSpigot" />
   <img src="https://img.shields.io/badge/Build-Gradle-blue?style=for-the-badge&logo=gradle&logoColor=white" alt="Gradle" />
+  <img src="https://img.shields.io/badge/JitPack-v1.0.0-green?style=for-the-badge&logo=github" alt="JitPack v1.0.0" />
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License MIT" />
 </p>
 
 ---
 
-[✨ Funcionalidades](#-funcionalidades) • [🏛️ Pacotes](#️-pacotes) • [📖 Guia de Uso](#-guia-de-uso) • [🎮 Boas Práticas](#-boas-práticas-para-plugins) • [📄 Licença](#-licença)
+[✨ Funcionalidades](#-funcionalidades) • [🏛️ Pacotes](#️-pacotes) • [📦 Instalação](#-instalação) • [📖 Guia de Uso](#-guia-de-uso) • [🎮 Boas Práticas](#-boas-práticas-para-plugins) • [📄 Licença](#-licença)
 
 </div>
 
@@ -21,44 +22,46 @@
 
 ## ✨ Funcionalidades
 
-* ⚡ **Assincronia Nativa & Virtual Threads**: Execução paralela de banco utilizando as **Virtual Threads do Java 21** para eliminar completamente quedas de TPS na thread de tick principal do Minecraft.
-* 📈 **Performance Otimizada**:
-  * Anotação `@Index` para criação automática de índices de busca rápida em campos como UUIDs ou nomes.
-  * Cache inteligente baseando-se em `WeakReference` com sistema automático de limpeza (*autopodamento*) de referências obsoletas da JVM.
-* 🔒 **Integridade Total de Dados**: Validação de parâmetros nulos e suporte a restrição `UNIQUE` em campos `@Column`.
-* 🌐 **SQLite & MySQL**: Escolha ideal para ambientes locais (SQLite embarcado) ou ambientes distribuídos em redes de servidores (MySQL integrado com pool HikariCP).
-* 🔍 **Query Builder Fluente**: API declarativa avançada contendo operadores como `isNull()`, `isNotNull()` e `in()` sem necessidade de queries SQL brutas.
+* ⚡ **Threads Virtuais do Java 21**: Execução assíncrona real de queries e conexões de banco de dados, liberando 100% da thread de tick do Minecraft (Main Thread) para mitigar quedas de TPS.
+* 🔒 **Segurança Nativa & Sanitização**: Proteção integrada contra SQL Injection por meio de Prepared Statements sistemáticos e sanitização dinâmica de identificadores através de aspas automáticas nos dialetos de banco.
+* 🏷️ **Mapeamento Declarativo Avançado**:
+  * `@Index` para criação e sincronização automáticas de índices de banco em colunas de alta frequência de busca (ex: UUIDs e nicknames).
+  * `@Column(unique = true)` para integridade referencial nativa no banco.
+  * Mapeamento de objetos complexos (JSON) usando conversor automático baseado em **Gson**.
+* 🔄 **Transações Assíncronas**: APIs fluidas `runInTransactionAsync` com suporte automático a rollback integrado e limpeza de cache de primeiro nível.
+* 📂 **Migrações Automáticas**: Gerenciador de migrações em lote para ler e aplicar arquivos de migração SQL (`V1.sql`, `V2.sql`, etc.) direto do Classpath (pasta resources) ou do diretório do plugin.
+* 🏛️ **Repositórios Estendíveis**: Classe utilitária `AbstractRepository<T>` protegida para facilitar a codificação de repositórios customizados com regras de negócios específicas do plugin.
+* 🔌 **Integração de Logs**: Canalize os logs de depuração e conexões do ORM diretamente para o Logger do plugin Bukkit (`plugin.getLogger()`).
+* 🌐 **SQLite & MySQL**: Perfeito tanto para banco local embutido (SQLite em WAL mode) quanto para bancos externos distribuídos em rede (MySQL integrado ao pool HikariCP).
 
 ---
 
 ## 🏛️ Estrutura de Pacotes
 
-A estrutura foi reorganizada visando o conceito de DX (*Developer Experience*), expondo a API pública diretamente no pacote raiz e isolando as implementações:
+Projetado focando em **DX** (*Developer Experience*), a API expõe as classes principais na raiz e isola as partes de engenharia interna:
 
 ```text
 com.github.paperorm
-├── PaperOrm.java               # Configuração fluente e ponto de entrada da API
-├── OrmSession.java             # Gerenciamento de sessão ativa e cache
-├── OrmFactory.java             # Criação interna de repositórios
+├── PaperOrm.java               # Ponto de entrada, builder e configuração fluente
+├── OrmSession.java             # Gerenciamento de sessão de cache local e transações
+├── OrmFactory.java             # Factory interna dos repositórios
 ├── annotation/                 # Mapeamento do banco (@Entity, @Column, @Id, @Index, @ManyToOne...)
-├── database/                   # Manipulação de conexões, pools e transações ACID
-├── dialect/                    # Definições de dialetos SQL (SQLite, MySQL)
-├── exception/                  # OrmException (Sealed) e exceções filhas especializadas
-├── mapping/                    # Conversores de tipo (TypeConverter), metadados e reflection
-├── migration/                  # Controle simples de versionamento do schema
-├── repository/                 # Interfaces e implementações de queries e dados
-└── schema/                     # SchemaManager responsável por DDL e alteração de tabelas
+├── database/                   # Pools de conexão HikariCP, transações e adaptadores
+├── dialect/                    # Definições e escape de dialetos (SQLite, MySQL)
+├── exception/                  # Exceções seladas (Sealed hierarchy) para integridade
+├── mapping/                    # Metadados de reflection e conversores (TypeConverter)
+├── migration/                  # Controle, versionamento e loaders de migração SQL
+├── repository/                 # Interfaces CRUD, query builder e AbstractRepository
+└── schema/                     # Gerenciador de DDL e sincronizador de tabelas (SchemaManager)
 ```
 
 ---
 
-## 📖 Guia de Uso
+## 📦 Instalação
 
-### 📦 Instalação
+Adicione o repositório do JitPack e a dependência do **PaperORM** no arquivo de build (`build.gradle.kts` ou `pom.xml`):
 
-Adicione o repositório do JitPack e a dependência do **PaperORM** no seu arquivo de build (`build.gradle.kts` ou `pom.xml`):
-
-#### Gradle (Kotlin DSL)
+### Gradle (Kotlin DSL)
 
 ```kotlin
 repositories {
@@ -67,11 +70,11 @@ repositories {
 }
 
 dependencies {
-    implementation("com.github.HanielCota:PaperORM:Tag") // Substitua 'Tag' pela versão desejada ou commit hash
+    implementation("com.github.HanielCota:PaperORM:v1.0.0")
 }
 ```
 
-#### Gradle (Groovy)
+### Gradle (Groovy)
 
 ```groovy
 repositories {
@@ -80,11 +83,11 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.HanielCota:PaperORM:Tag' // Substitua 'Tag' pela versão desejada ou commit hash
+    implementation 'com.github.HanielCota:PaperORM:v1.0.0'
 }
 ```
 
-#### Maven
+### Maven
 
 ```xml
 <repositories>
@@ -97,15 +100,20 @@ dependencies {
 <dependency>
     <groupId>com.github.HanielCota</groupId>
     <artifactId>PaperORM</artifactId>
-    <version>Tag</version> <!-- Substitua 'Tag' pela versão desejada ou commit hash -->
+    <version>v1.0.0</version>
 </dependency>
 ```
 
 ---
 
+## 📖 Guia de Uso
+
 ### 1. Definindo as Entidades
 
 ```java
+import com.github.paperorm.annotation.*;
+import java.util.UUID;
+
 @Entity
 @Table(name = "players")
 public final class PlayerProfile {
@@ -127,27 +135,21 @@ public final class PlayerProfile {
     @Transient
     private boolean isOnline; // Ignorado pelo ORM
 
-    public PlayerProfile() {} // Construtor obrigatório
+    public PlayerProfile() {} // Construtor sem argumentos obrigatório
+    
+    // Getters & Setters
 }
 ```
 
-### 2. Inicialização Rápida
+### 2. Inicialização Rápida & Logs com Bukkit
 
-#### SQLite (Servidor Único)
+Configure o ORM no seu plugin conectando-o ao logger oficial do Bukkit:
+
 ```java
 PaperOrm orm = PaperOrm.builder()
     .sqlite(plugin.getDataFolder().toPath().resolve("database.db"))
-    .useVirtualThreads() // Ativa o executor de threads virtuais
-    .registerEntity(PlayerProfile.class)
-    .autoCreateTables(true)
-    .build();
-```
-
-#### MySQL (Redes Integradas / Bungee)
-```java
-PaperOrm orm = PaperOrm.builder()
-    .mysql("127.0.0.1", 3306, "minecraft", "admin", "password")
-    .useVirtualThreads()
+    .logger(plugin.getLogger()) // Todos os logs canalizados no console do Bukkit!
+    .useVirtualThreads()       // Ativa execução paralela rápida do Java 21
     .registerEntity(PlayerProfile.class)
     .autoCreateTables(true)
     .build();
@@ -155,37 +157,86 @@ PaperOrm orm = PaperOrm.builder()
 
 ---
 
-### 3. Operações CRUD Assíncronas
+### 3. Migrações Automáticas de Schema
+
+Mantenha o banco atualizado carregando arquivos `.sql` (`V1.sql`, `V2.sql`, etc.) presentes no Classpath (pasta resources):
+
+```java
+var migrations = MigrationRunner.loadFromClasspath(
+    plugin.getClass().getClassLoader(), 
+    "db/migrations"
+);
+
+PaperOrm orm = PaperOrm.builder()
+    .sqlite(databasePath)
+    .migrations(migrations) // Executa as migrações automaticamente ao iniciar
+    .build();
+```
+
+---
+
+### 4. Transações Assíncronas
+
+Execute alterações em lote de forma transacional e assíncrona para garantir consistência de dados:
+
+```java
+orm.openSession().runInTransactionAsync(conn -> {
+    // Executa operações seguras de escrita
+    profileRepository.save(profile);
+    statsRepository.save(stats);
+    return null; // Retorna nulo ou algum valor obtido
+}).thenAccept(v -> {
+    plugin.getLogger().info("Transação em lote executada com sucesso!");
+}).exceptionally(err -> {
+    plugin.getLogger().severe("A transação falhou e o rollback foi efetuado: " + err.getMessage());
+    return null;
+});
+```
+
+---
+
+### 5. Repositórios Estendíveis (`AbstractRepository`)
+
+Crie repositórios dedicados para encapsular queries de domínio e lógica de negócios customizada:
+
+```java
+import com.github.paperorm.PaperOrm;
+import com.github.paperorm.repository.AbstractRepository;
+import java.util.Optional;
+import java.util.UUID;
+
+public final class PlayerRepository extends AbstractRepository<PlayerProfile> {
+
+    public PlayerRepository(PaperOrm orm) {
+        super(PlayerProfile.class, orm);
+    }
+
+    public Optional<PlayerProfile> findByUuid(UUID uuid) {
+        return select()
+            .where("uuid").eq(uuid)
+            .uniqueResult();
+    }
+}
+```
+
+---
+
+### 6. Query Builder Fluente
 
 ```java
 var repository = orm.getRepository(PlayerProfile.class);
 
-// Salva e carrega dados sem travar a Main Thread
-repository.saveAsync(profile)
-    .thenCompose(v -> repository.findByIdAsync(profile.getId()))
-    .thenAccept(optProfile -> {
-        optProfile.ifPresent(p -> {
-            plugin.getLogger().info("Perfil do jogador " + p.getName() + " carregado com sucesso!");
-        });
-    });
-```
-
----
-
-### 4. Consultas Fluentes (Query Builder)
-
-```java
-// Consulta combinada com ordenação e limite de registros
+// Busca combinada com ordenação, IS NOT NULL e limite
 List<PlayerProfile> leaders = repository.select()
     .where("coins").greaterThan(1000)
     .and("active").isNotNull()
     .orderBy("coins", "DESC")
-    .limit(5)
+    .limit(10)
     .list();
 
-// Consulta usando múltiplos valores através de IN
-List<PlayerProfile> targetList = repository.select()
-    .where("id").in(1L, 2L, 5L)
+// Busca usando operador IN
+List<PlayerProfile> selected = repository.select()
+    .where("name").in("Haniel", "Cota", "Paper")
     .list();
 ```
 
@@ -193,25 +244,27 @@ List<PlayerProfile> targetList = repository.select()
 
 ## 🎮 Boas Práticas para Plugins
 
-* 📌 **Main Thread Livre**: Utilize sempre operações que terminam com `Async` (`saveAsync()`, `findByIdAsync()`, etc.) para assegurar que a thread do loop de tick do Minecraft permaneça livre de latência de rede ou disco.
-* 📌 **Retorno ao Jogo Seguro**: Ao trabalhar com dados de forma assíncrona, certifique-se de usar o Bukkit Scheduler para rodar tarefas do mundo (como aplicar teletransportes ou editar blocos) na thread principal:
+* 📌 **Main Thread Livre**: Prefira utilizar operações que terminam com `Async` (`saveAsync()`, `findByIdAsync()`, etc.) para assegurar que a thread principal de tick do Minecraft permaneça livre de latência.
+* 📌 **Retorno Seguro ao Jogo**: Ao lidar com manipulações do mundo do Minecraft após obter dados de queries assíncronas, retorne o processo para a Thread Principal utilizando o Scheduler do Bukkit:
   ```java
   repository.findByIdAsync(id).thenAccept(opt -> {
       opt.ifPresent(p -> {
           Bukkit.getScheduler().runTask(plugin, () -> {
               Player player = Bukkit.getPlayer(p.getUuid());
-              if (player != null) player.setLevel(p.getCoins());
+              if (player != null) {
+                  player.setLevel(p.getCoins());
+              }
           });
       });
   });
   ```
-* 📌 **Relocação no Gradle**: Lembre-se de usar a realocação (*relocation*) no plugin Shadow do Gradle para evitar conflitos das classes empacotadas do pool `HikariCP` com outros plugins ativos no servidor:
+* 📌 **Relocação no Gradle (Shadow)**: Sempre use o plugin Shadow do Gradle para realocar (*relocate*) as classes internas do pool de conexão `HikariCP` e o driver de banco de dados. Isso previne conflitos de classpath com outros plugins rodando no mesmo servidor:
   ```kotlin
   tasks.shadowJar {
       relocate("com.zaxxer.hikari", "com.github.paperorm.libs.hikari")
   }
   ```
-* 📌 **Fechamento Limpo**: Chame `paperOrm.close()` no método `onDisable()` para liberar as conexões JDBC ativas da JVM antes que o plugin seja recarregado.
+* 📌 **Fechamento Limpo**: Chame `paperOrm.close()` no método `onDisable()` do seu plugin para desativar e fechar todas as conexões ativas do pool HikariCP.
 
 ---
 
