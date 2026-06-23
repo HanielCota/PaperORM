@@ -3,8 +3,9 @@ package com.github.paperorm;
 import com.github.paperorm.database.DataSourceDatabaseConnection;
 import com.github.paperorm.database.DatabaseConnection;
 import com.github.paperorm.database.SqliteDatabaseConnection;
+import com.github.paperorm.dialect.MySqlDialect;
 import com.github.paperorm.dialect.SqlDialect;
-import com.github.paperorm.dialect.StandardSqlDialect;
+import com.github.paperorm.dialect.SqliteDialect;
 import com.github.paperorm.mapping.EntityScanner;
 import com.github.paperorm.mapping.JsonTypeConverter;
 import com.github.paperorm.mapping.ReflectionEntityScanner;
@@ -167,7 +168,7 @@ public final class PaperOrm implements AutoCloseable {
     private DatabaseConnection connection;
     private Executor executor = ForkJoinPool.commonPool();
     private EntityScanner scanner = new ReflectionEntityScanner();
-    private SqlDialect dialect = new StandardSqlDialect();
+    private SqlDialect dialect = new SqliteDialect();
     private TypeMapper typeMapper = new TypeMapper();
     private final List<Class<?>> registeredEntities = new ArrayList<>();
     private boolean autoCreateTables = false;
@@ -189,7 +190,7 @@ public final class PaperOrm implements AutoCloseable {
      */
     public Builder sqlite(Path path) {
       this.sqlitePath = path;
-      this.dialect = new StandardSqlDialect(StandardSqlDialect.DatabaseType.SQLITE);
+      this.dialect = new SqliteDialect();
       return this;
     }
 
@@ -237,7 +238,7 @@ public final class PaperOrm implements AutoCloseable {
       config.addDataSourceProperty("useServerPrepStmts", "true");
 
       this.connection = new DataSourceDatabaseConnection(new HikariDataSource(config), this.logger);
-      this.dialect = new StandardSqlDialect(StandardSqlDialect.DatabaseType.MYSQL);
+      this.dialect = new MySqlDialect();
       return this;
     }
 

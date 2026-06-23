@@ -13,11 +13,34 @@ public final class Spec<T> implements Specification<T> {
 
   private Spec() {}
 
+  Spec(List<Fragment> fragments) {
+    this.fragments.addAll(fragments);
+  }
+
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  static <T> Spec<T> empty() {
+    return new Spec();
+  }
+
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  Spec<T> copy() {
+    var fragments = new ArrayList<>(this.fragments);
+    Spec spec = new Spec(fragments);
+    spec.currentColumn = this.currentColumn;
+    return spec;
+  }
+
   public static <T> Spec<T> where(String column) {
     Objects.requireNonNull(column, "column");
     var spec = new Spec<T>();
     spec.currentColumn = column;
     return spec;
+  }
+
+  Spec<T> whereInstance(String column) {
+    Objects.requireNonNull(column, "column");
+    this.currentColumn = column;
+    return this;
   }
 
   public Spec<T> and(String column) {

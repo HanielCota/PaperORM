@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.github.paperorm.dialect.SqlDialect;
-import com.github.paperorm.dialect.StandardSqlDialect;
+import com.github.paperorm.dialect.SqliteDialect;
 import com.github.paperorm.repository.query.Spec;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,7 +16,7 @@ class SpecTest {
 
   @BeforeEach
   void setUp() {
-    dialect = new StandardSqlDialect();
+    dialect = new SqliteDialect();
   }
 
   @Test

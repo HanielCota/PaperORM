@@ -47,6 +47,12 @@ public interface Query<T> {
   /** Adds a less-than comparison. */
   Query<T> lessThan(Object value);
 
+  /** Adds a greater-than-or-equal comparison. */
+  Query<T> greaterOrEqual(Object value);
+
+  /** Adds a less-than-or-equal comparison. */
+  Query<T> lessOrEqual(Object value);
+
   /** Adds a LIKE comparison. */
   Query<T> like(Object value);
 

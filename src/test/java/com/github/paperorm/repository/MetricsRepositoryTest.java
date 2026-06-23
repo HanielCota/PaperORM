@@ -8,7 +8,7 @@ import com.github.paperorm.annotation.Entity;
 import com.github.paperorm.annotation.Id;
 import com.github.paperorm.annotation.Table;
 import com.github.paperorm.database.SqliteDatabaseConnection;
-import com.github.paperorm.dialect.StandardSqlDialect;
+import com.github.paperorm.dialect.SqliteDialect;
 import com.github.paperorm.mapping.ReflectionEntityScanner;
 import com.github.paperorm.mapping.TypeMapper;
 import com.github.paperorm.repository.query.Spec;
@@ -29,7 +29,7 @@ class MetricsRepositoryTest {
   void setUp() {
     connection = new SqliteDatabaseConnection(tempDir.resolve("test.db"));
     var scanner = new ReflectionEntityScanner();
-    var dialect = new StandardSqlDialect();
+    var dialect = new SqliteDialect();
     var typeMapper = new TypeMapper();
     var inner =
         new SqlRepository<>(MetricTestEntity.class, connection, scanner, dialect, typeMapper);

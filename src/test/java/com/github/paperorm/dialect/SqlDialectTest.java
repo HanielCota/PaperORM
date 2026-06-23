@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 
 class SqlDialectTest {
 
-  private final SqlDialect dialect = new StandardSqlDialect();
+  private final SqlDialect dialect = new SqliteDialect();
   private EntityMetadata metadata;
 
   @BeforeEach

@@ -3,7 +3,7 @@ package com.github.paperorm.migration;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.github.paperorm.database.SqliteDatabaseConnection;
-import com.github.paperorm.dialect.StandardSqlDialect;
+import com.github.paperorm.dialect.SqliteDialect;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -22,7 +22,7 @@ class MigrationRunnerTest {
   @BeforeEach
   void setUp() {
     connection = new SqliteDatabaseConnection(tempDir.resolve("test.db"));
-    runner = new MigrationRunner(new StandardSqlDialect());
+    runner = new MigrationRunner(new SqliteDialect());
   }
 
   @AfterEach

@@ -19,7 +19,7 @@ import com.github.paperorm.annotation.Transient;
 import com.github.paperorm.database.SqliteDatabaseConnection;
 import com.github.paperorm.database.VoidTransactionCallback;
 import com.github.paperorm.dialect.SqlDialect;
-import com.github.paperorm.dialect.StandardSqlDialect;
+import com.github.paperorm.dialect.SqliteDialect;
 import com.github.paperorm.mapping.EntityScanner;
 import com.github.paperorm.mapping.ReflectionEntityScanner;
 import com.github.paperorm.mapping.TypeMapper;
@@ -43,7 +43,7 @@ class SqlRepositoryTest {
   void setUp() {
     connection = new SqliteDatabaseConnection(tempDir.resolve("test.db"));
     scanner = new ReflectionEntityScanner();
-    dialect = new StandardSqlDialect();
+    dialect = new SqliteDialect();
     typeMapper = new TypeMapper();
     repository = new SqlRepository<>(TestReward.class, connection, scanner, dialect, typeMapper);
   }

@@ -8,7 +8,7 @@ import com.github.paperorm.annotation.Id;
 import com.github.paperorm.database.SqliteDatabaseConnection;
 import com.github.paperorm.database.TransactionCallback;
 import com.github.paperorm.database.VoidTransactionCallback;
-import com.github.paperorm.dialect.StandardSqlDialect;
+import com.github.paperorm.dialect.SqliteDialect;
 import com.github.paperorm.mapping.ReflectionEntityScanner;
 import com.github.paperorm.mapping.TypeMapper;
 import java.nio.file.Path;
@@ -29,7 +29,7 @@ class OrmSessionTest {
   void setUp() {
     connection = new SqliteDatabaseConnection(tempDir.resolve("test.db"));
     var scanner = new ReflectionEntityScanner();
-    var dialect = new StandardSqlDialect();
+    var dialect = new SqliteDialect();
     var typeMapper = new TypeMapper();
     factory = new OrmFactory(connection, scanner, dialect, typeMapper, Runnable::run, true);
     session = new OrmSession(connection, factory, true);

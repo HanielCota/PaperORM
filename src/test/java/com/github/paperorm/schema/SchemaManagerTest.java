@@ -8,7 +8,7 @@ import com.github.paperorm.annotation.Id;
 import com.github.paperorm.annotation.Index;
 import com.github.paperorm.database.SqliteDatabaseConnection;
 import com.github.paperorm.dialect.SqlDialect;
-import com.github.paperorm.dialect.StandardSqlDialect;
+import com.github.paperorm.dialect.SqliteDialect;
 import com.github.paperorm.mapping.ReflectionEntityScanner;
 import java.nio.file.Path;
 import org.junit.jupiter.api.AfterEach;
@@ -27,7 +27,7 @@ class SchemaManagerTest {
   @BeforeEach
   void setUp() {
     connection = new SqliteDatabaseConnection(tempDir.resolve("test.db"));
-    dialect = new StandardSqlDialect();
+    dialect = new SqliteDialect();
     schemaManager = new SchemaManager(connection, dialect);
   }
 

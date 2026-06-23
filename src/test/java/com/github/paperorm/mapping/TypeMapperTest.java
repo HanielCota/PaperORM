@@ -40,89 +40,89 @@ class TypeMapperTest {
 
   @Test
   void shouldInferTextSqlTypeForString() {
-    assertEquals("TEXT", TypeMapper.sqlTypeFor(String.class));
+    assertEquals("TEXT", SqlTypeResolver.resolve(String.class));
   }
 
   @Test
   void shouldInferTextSqlTypeForUuid() {
-    assertEquals("TEXT", TypeMapper.sqlTypeFor(UUID.class));
+    assertEquals("TEXT", SqlTypeResolver.resolve(UUID.class));
   }
 
   @Test
   void shouldInferTextSqlTypeForBigDecimal() {
-    assertEquals("TEXT", TypeMapper.sqlTypeFor(BigDecimal.class));
+    assertEquals("TEXT", SqlTypeResolver.resolve(BigDecimal.class));
   }
 
   @Test
   void shouldInferTextSqlTypeForLocalDateTime() {
-    assertEquals("TEXT", TypeMapper.sqlTypeFor(LocalDateTime.class));
+    assertEquals("TEXT", SqlTypeResolver.resolve(LocalDateTime.class));
   }
 
   @Test
   void shouldInferTextSqlTypeForInstant() {
-    assertEquals("TEXT", TypeMapper.sqlTypeFor(Instant.class));
+    assertEquals("TEXT", SqlTypeResolver.resolve(Instant.class));
   }
 
   @Test
   void shouldInferIntegerSqlTypeForInt() {
-    assertEquals("INTEGER", TypeMapper.sqlTypeFor(int.class));
-    assertEquals("INTEGER", TypeMapper.sqlTypeFor(Integer.class));
+    assertEquals("INTEGER", SqlTypeResolver.resolve(int.class));
+    assertEquals("INTEGER", SqlTypeResolver.resolve(Integer.class));
   }
 
   @Test
   void shouldInferIntegerSqlTypeForLong() {
-    assertEquals("INTEGER", TypeMapper.sqlTypeFor(long.class));
-    assertEquals("INTEGER", TypeMapper.sqlTypeFor(Long.class));
+    assertEquals("INTEGER", SqlTypeResolver.resolve(long.class));
+    assertEquals("INTEGER", SqlTypeResolver.resolve(Long.class));
   }
 
   @Test
   void shouldInferIntegerSqlTypeForShort() {
-    assertEquals("INTEGER", TypeMapper.sqlTypeFor(short.class));
-    assertEquals("INTEGER", TypeMapper.sqlTypeFor(Short.class));
+    assertEquals("INTEGER", SqlTypeResolver.resolve(short.class));
+    assertEquals("INTEGER", SqlTypeResolver.resolve(Short.class));
   }
 
   @Test
   void shouldInferIntegerSqlTypeForByte() {
-    assertEquals("INTEGER", TypeMapper.sqlTypeFor(byte.class));
-    assertEquals("INTEGER", TypeMapper.sqlTypeFor(Byte.class));
+    assertEquals("INTEGER", SqlTypeResolver.resolve(byte.class));
+    assertEquals("INTEGER", SqlTypeResolver.resolve(Byte.class));
   }
 
   @Test
   void shouldInferIntegerSqlTypeForBoolean() {
-    assertEquals("INTEGER", TypeMapper.sqlTypeFor(boolean.class));
-    assertEquals("INTEGER", TypeMapper.sqlTypeFor(Boolean.class));
+    assertEquals("INTEGER", SqlTypeResolver.resolve(boolean.class));
+    assertEquals("INTEGER", SqlTypeResolver.resolve(Boolean.class));
   }
 
   @Test
   void shouldInferRealSqlTypeForDouble() {
-    assertEquals("REAL", TypeMapper.sqlTypeFor(double.class));
-    assertEquals("REAL", TypeMapper.sqlTypeFor(Double.class));
+    assertEquals("REAL", SqlTypeResolver.resolve(double.class));
+    assertEquals("REAL", SqlTypeResolver.resolve(Double.class));
   }
 
   @Test
   void shouldInferRealSqlTypeForFloat() {
-    assertEquals("REAL", TypeMapper.sqlTypeFor(float.class));
-    assertEquals("REAL", TypeMapper.sqlTypeFor(Float.class));
+    assertEquals("REAL", SqlTypeResolver.resolve(float.class));
+    assertEquals("REAL", SqlTypeResolver.resolve(Float.class));
   }
 
   @Test
   void shouldInferBlobSqlTypeForByteArray() {
-    assertEquals("BLOB", TypeMapper.sqlTypeFor(byte[].class));
+    assertEquals("BLOB", SqlTypeResolver.resolve(byte[].class));
   }
 
   @Test
   void shouldInferTextSqlTypeForEnum() {
-    assertEquals("TEXT", TypeMapper.sqlTypeFor(SampleEnum.class));
+    assertEquals("TEXT", SqlTypeResolver.resolve(SampleEnum.class));
   }
 
   @Test
   void shouldInferTextForNull() {
-    assertEquals("TEXT", TypeMapper.sqlTypeFor(null));
+    assertEquals("TEXT", SqlTypeResolver.resolve(null));
   }
 
   @Test
   void shouldInferTextForUnknownTypes() {
-    assertEquals("TEXT", TypeMapper.sqlTypeFor(TypeMapperTest.class));
+    assertEquals("TEXT", SqlTypeResolver.resolve(TypeMapperTest.class));
   }
 
   enum SampleEnum {

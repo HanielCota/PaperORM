@@ -5,8 +5,6 @@ plugins {
     jacoco
 }
 
-import org.gradle.testing.jacoco.tasks.JacocoReport
-
 group = "com.github.paperorm"
 version = "1.0.0-SNAPSHOT"
 
@@ -20,8 +18,8 @@ dependencies {
     implementation("org.xerial:sqlite-jdbc:3.49.1.0")
     implementation("com.zaxxer:HikariCP:6.3.0")
 
-    compileOnly("org.projectlombok:lombok:1.18.38")
-    annotationProcessor("org.projectlombok:lombok:1.18.38")
+    compileOnly("org.projectlombok:lombok:1.18.42")
+    annotationProcessor("org.projectlombok:lombok:1.18.42")
     compileOnly("com.google.code.gson:gson:2.14.0")
 
     testImplementation(platform("org.junit:junit-bom:5.12.2"))
@@ -32,43 +30,38 @@ dependencies {
     testImplementation("com.mysql:mysql-connector-j:9.3.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
-    testCompileOnly("org.projectlombok:lombok:1.18.38")
-    testAnnotationProcessor("org.projectlombok:lombok:1.18.38")
+    testCompileOnly("org.projectlombok:lombok:1.18.42")
+    testAnnotationProcessor("org.projectlombok:lombok:1.18.42")
 }
 
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(21))
+        languageVersion = JavaLanguageVersion.of(21)
     }
     withSourcesJar()
 }
 
-tasks {
-    withType<JavaCompile> {
-        options.encoding = "UTF-8"
-        options.release.set(21)
-        options.compilerArgs.add("-Xlint:unchecked")
-    }
-
-    test {
-        useJUnitPlatform()
-        jvmArgs("--enable-native-access=ALL-UNNAMED")
-    }
+tasks.withType<JavaCompile>().configureEach {
+    options.encoding = "UTF-8"
+    options.release = 21
+    options.compilerArgs.addAll(listOf("-Xlint:unchecked", "-Xlint:deprecation"))
 }
 
-tasks.named("test") {
-    finalizedBy(tasks.named("jacocoTestReport"))
+tasks.test {
+    useJUnitPlatform()
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+    finalizedBy(tasks.jacocoTestReport)
 }
 
 jacoco {
-    toolVersion = "0.8.12"
+    toolVersion = "0.8.13"
 }
 
-tasks.named<JacocoReport>("jacocoTestReport") {
-    dependsOn(tasks.named("test"))
+tasks.jacocoTestReport {
+    dependsOn(tasks.test)
     reports {
-        xml.required.set(true)
-        html.required.set(true)
+        xml.required = true
+        html.required = true
     }
 }
 

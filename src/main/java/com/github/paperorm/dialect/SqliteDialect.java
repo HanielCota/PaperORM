@@ -5,24 +5,7 @@ import com.github.paperorm.mapping.EntityMetadata;
 import java.util.Objects;
 import java.util.StringJoiner;
 
-/**
- * @deprecated Use {@link SqliteDialect} or {@link MySqlDialect} instead.
- */
-@Deprecated
-public record StandardSqlDialect(DatabaseType databaseType) implements SqlDialect {
-
-  /**
-   * @deprecated Use {@link SqliteDialect} or {@link MySqlDialect} directly.
-   */
-  @Deprecated
-  public enum DatabaseType {
-    SQLITE,
-    MYSQL
-  }
-
-  public StandardSqlDialect() {
-    this(DatabaseType.SQLITE);
-  }
+public record SqliteDialect() implements SqlDialect {
 
   @Override
   public String createTable(EntityMetadata metadata) {
@@ -39,9 +22,7 @@ public record StandardSqlDialect(DatabaseType databaseType) implements SqlDialec
       definition.append(quoteIdentifier(column.columnName())).append(" ").append(sqlType(column));
 
       if (column.id() && column.autoIncrement()) {
-        definition
-            .append(" PRIMARY KEY ")
-            .append(databaseType == DatabaseType.MYSQL ? "AUTO_INCREMENT" : "AUTOINCREMENT");
+        definition.append(" PRIMARY KEY AUTOINCREMENT");
         columnDefinitions.add(definition);
         continue;
       }
@@ -146,15 +127,12 @@ public record StandardSqlDialect(DatabaseType databaseType) implements SqlDialec
   @Override
   public String quoteIdentifier(String identifier) {
     Objects.requireNonNull(identifier, "identifier");
-    if (databaseType == DatabaseType.MYSQL) {
-      return "`" + identifier.replace("`", "``") + "`";
-    }
     return "\"" + identifier.replace("\"", "\"\"") + "\"";
   }
 
   @Override
   public String currentTimestampDefault() {
-    return databaseType == DatabaseType.MYSQL ? "UNIX_TIMESTAMP()" : "unixepoch()";
+    return "unixepoch()";
   }
 
   @Override
@@ -179,10 +157,6 @@ public record StandardSqlDialect(DatabaseType databaseType) implements SqlDialec
 
     if (!column.nullable()) {
       def.append(" NOT NULL");
-    }
-
-    if (column.unique() && databaseType == DatabaseType.MYSQL) {
-      def.append(" UNIQUE");
     }
 
     return def.toString();

@@ -5,24 +5,7 @@ import com.github.paperorm.mapping.EntityMetadata;
 import java.util.Objects;
 import java.util.StringJoiner;
 
-/**
- * @deprecated Use {@link SqliteDialect} or {@link MySqlDialect} instead.
- */
-@Deprecated
-public record StandardSqlDialect(DatabaseType databaseType) implements SqlDialect {
-
-  /**
-   * @deprecated Use {@link SqliteDialect} or {@link MySqlDialect} directly.
-   */
-  @Deprecated
-  public enum DatabaseType {
-    SQLITE,
-    MYSQL
-  }
-
-  public StandardSqlDialect() {
-    this(DatabaseType.SQLITE);
-  }
+public record MySqlDialect() implements SqlDialect {
 
   @Override
   public String createTable(EntityMetadata metadata) {
@@ -39,9 +22,7 @@ public record StandardSqlDialect(DatabaseType databaseType) implements SqlDialec
       definition.append(quoteIdentifier(column.columnName())).append(" ").append(sqlType(column));
 
       if (column.id() && column.autoIncrement()) {
-        definition
-            .append(" PRIMARY KEY ")
-            .append(databaseType == DatabaseType.MYSQL ? "AUTO_INCREMENT" : "AUTOINCREMENT");
+        definition.append(" PRIMARY KEY AUTO_INCREMENT");
         columnDefinitions.add(definition);
         continue;
       }
@@ -146,15 +127,12 @@ public record StandardSqlDialect(DatabaseType databaseType) implements SqlDialec
   @Override
   public String quoteIdentifier(String identifier) {
     Objects.requireNonNull(identifier, "identifier");
-    if (databaseType == DatabaseType.MYSQL) {
-      return "`" + identifier.replace("`", "``") + "`";
-    }
-    return "\"" + identifier.replace("\"", "\"\"") + "\"";
+    return "`" + identifier.replace("`", "``") + "`";
   }
 
   @Override
   public String currentTimestampDefault() {
-    return databaseType == DatabaseType.MYSQL ? "UNIX_TIMESTAMP()" : "unixepoch()";
+    return "UNIX_TIMESTAMP()";
   }
 
   @Override
@@ -181,7 +159,7 @@ public record StandardSqlDialect(DatabaseType databaseType) implements SqlDialec
       def.append(" NOT NULL");
     }
 
-    if (column.unique() && databaseType == DatabaseType.MYSQL) {
+    if (column.unique()) {
       def.append(" UNIQUE");
     }
 
