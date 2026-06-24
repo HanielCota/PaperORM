@@ -4,12 +4,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.github.paperorm.OrmContext;
 import com.github.paperorm.annotation.Column;
 import com.github.paperorm.annotation.Entity;
 import com.github.paperorm.annotation.Id;
 import com.github.paperorm.annotation.Table;
 import com.github.paperorm.database.SqliteDatabaseConnection;
 import com.github.paperorm.dialect.SqliteDialect;
+import com.github.paperorm.mapping.IdResolver;
 import com.github.paperorm.mapping.ReflectionEntityScanner;
 import com.github.paperorm.mapping.TypeMapper;
 import com.github.paperorm.repository.query.Spec;
@@ -32,10 +34,21 @@ class LoggingRepositoryTest {
   @BeforeEach
   void setUp() {
     connection = new SqliteDatabaseConnection(tempDir.resolve("test.db"));
-    var scanner = new ReflectionEntityScanner();
-    var dialect = new SqliteDialect();
     var typeMapper = new TypeMapper();
-    inner = new SqlRepository<>(LogTestEntity.class, connection, scanner, dialect, typeMapper);
+    var scanner = new ReflectionEntityScanner(typeMapper);
+    var dialect = new SqliteDialect();
+    var context =
+        new OrmContext(
+            connection,
+            scanner,
+            dialect,
+            typeMapper,
+            new IdResolver(),
+            Runnable::run,
+            true,
+            false,
+            null);
+    inner = new SqlRepository<>(LogTestEntity.class, context);
     repo = new LoggingRepository<>(inner, logger);
     repo.ensureTable();
   }
@@ -146,7 +159,7 @@ class LoggingRepositoryTest {
   void shouldLogAndProxySpec() {
     repo.save(new LogTestEntity(11L, "SpecTest"));
 
-    var spec = Spec.<LogTestEntity>where("name").eq("SpecTest");
+    var spec = Spec.<LogTestEntity>of("name").eq("SpecTest");
     var result = repo.find(spec);
     assertEquals(1, result.size());
   }
@@ -161,16 +174,11 @@ class LoggingRepositoryTest {
 
   @Entity
   @Table(name = "log_test_entities")
+  @lombok.NoArgsConstructor
+  @lombok.AllArgsConstructor
   static class LogTestEntity {
     @Id Long id;
 
     @Column String name;
-
-    LogTestEntity() {}
-
-    LogTestEntity(Long id, String name) {
-      this.id = id;
-      this.name = name;
-    }
   }
 }

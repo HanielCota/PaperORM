@@ -10,49 +10,57 @@ public interface Specification<T> {
 
   List<Object> getParameters();
 
-  default Specification<T> and(Specification<T> other) {
-    return new Specification<>() {
-      @Override
-      public String toSql(SqlDialect dialect) {
-        return "(" + Specification.this.toSql(dialect) + ") AND (" + other.toSql(dialect) + ")";
-      }
+  record AndSpecification<T>(Specification<T> left, Specification<T> right)
+      implements Specification<T> {
+    @Override
+    public String toSql(SqlDialect dialect) {
+      return "(%s) AND (%s)".formatted(left.toSql(dialect), right.toSql(dialect));
+    }
 
-      @Override
-      public List<Object> getParameters() {
-        var combined = new ArrayList<>(Specification.this.getParameters());
-        combined.addAll(other.getParameters());
-        return combined;
-      }
-    };
+    @Override
+    public List<Object> getParameters() {
+      var combined = new ArrayList<>(left.getParameters());
+      combined.addAll(right.getParameters());
+      return combined;
+    }
+  }
+
+  record OrSpecification<T>(Specification<T> left, Specification<T> right)
+      implements Specification<T> {
+    @Override
+    public String toSql(SqlDialect dialect) {
+      return "(%s) OR (%s)".formatted(left.toSql(dialect), right.toSql(dialect));
+    }
+
+    @Override
+    public List<Object> getParameters() {
+      var combined = new ArrayList<>(left.getParameters());
+      combined.addAll(right.getParameters());
+      return combined;
+    }
+  }
+
+  record NotSpecification<T>(Specification<T> spec) implements Specification<T> {
+    @Override
+    public String toSql(SqlDialect dialect) {
+      return "NOT (%s)".formatted(spec.toSql(dialect));
+    }
+
+    @Override
+    public List<Object> getParameters() {
+      return spec.getParameters();
+    }
+  }
+
+  default Specification<T> and(Specification<T> other) {
+    return new AndSpecification<>(this, other);
   }
 
   default Specification<T> or(Specification<T> other) {
-    return new Specification<>() {
-      @Override
-      public String toSql(SqlDialect dialect) {
-        return "(" + Specification.this.toSql(dialect) + ") OR (" + other.toSql(dialect) + ")";
-      }
-
-      @Override
-      public List<Object> getParameters() {
-        var combined = new ArrayList<>(Specification.this.getParameters());
-        combined.addAll(other.getParameters());
-        return combined;
-      }
-    };
+    return new OrSpecification<>(this, other);
   }
 
   default Specification<T> not() {
-    return new Specification<>() {
-      @Override
-      public String toSql(SqlDialect dialect) {
-        return "NOT (" + Specification.this.toSql(dialect) + ")";
-      }
-
-      @Override
-      public List<Object> getParameters() {
-        return Specification.this.getParameters();
-      }
-    };
+    return new NotSpecification<>(this);
   }
 }

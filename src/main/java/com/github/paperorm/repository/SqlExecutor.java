@@ -4,21 +4,24 @@ import com.github.paperorm.database.DatabaseConnection;
 import com.github.paperorm.exception.OrmException;
 import java.sql.Connection;
 import java.sql.SQLException;
+import lombok.RequiredArgsConstructor;
 
 @FunctionalInterface
 interface ConnectionAction<R> {
   R execute(Connection connection) throws SQLException;
 }
 
+@FunctionalInterface
+interface VoidConnectionAction {
+  void execute(Connection connection) throws SQLException;
+}
+
+@RequiredArgsConstructor
 final class SqlExecutor {
 
   private final DatabaseConnection connection;
 
-  SqlExecutor(DatabaseConnection connection) {
-    this.connection = connection;
-  }
-
-  <R> R execute(String errorMessage, ConnectionAction<R> action) {
+  private <R> R executeInternal(String errorMessage, ConnectionAction<R> action) {
     try (var conn = this.connection.openConnection()) {
       return action.execute(conn);
     } catch (SQLException exception) {
@@ -26,16 +29,16 @@ final class SqlExecutor {
     }
   }
 
-  void execute(String errorMessage, VoidConnectionAction action) {
-    try (var conn = this.connection.openConnection()) {
-      action.execute(conn);
-    } catch (SQLException exception) {
-      throw new OrmException(errorMessage, exception);
-    }
+  <R> R execute(String errorMessage, ConnectionAction<R> action) {
+    return executeInternal(errorMessage, action);
   }
 
-  @FunctionalInterface
-  interface VoidConnectionAction {
-    void execute(Connection connection) throws SQLException;
+  void executeVoid(String errorMessage, VoidConnectionAction action) {
+    executeInternal(
+        errorMessage,
+        conn -> {
+          action.execute(conn);
+          return null;
+        });
   }
 }

@@ -3,32 +3,37 @@ package com.github.paperorm.database;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import java.nio.file.Path;
+import java.util.Objects;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public final class SqliteDatabaseConnection extends DataSourceDatabaseConnection {
+
+  private static final String INIT_SQL =
+      "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;";
 
   public SqliteDatabaseConnection(Path databasePath) {
     this(databasePath, null);
   }
 
   public SqliteDatabaseConnection(Path databasePath, Logger logger) {
-    super(createSqliteDataSource(databasePath, logger), logger);
+    super(createDataSource(Objects.requireNonNull(databasePath, "databasePath"), logger), logger);
   }
 
-  private static HikariDataSource createSqliteDataSource(Path databasePath, Logger logger) {
-    var activeLogger =
-        logger != null ? logger : Logger.getLogger(SqliteDatabaseConnection.class.getName());
-    var url = "jdbc:sqlite:" + databasePath.toAbsolutePath();
-    activeLogger.info(
-        "Initializing SQLite Database connection pool at path: " + databasePath.toAbsolutePath());
+  private static HikariDataSource createDataSource(Path path, Logger logger) {
+    var log =
+        Objects.requireNonNullElse(
+            logger, Logger.getLogger(SqliteDatabaseConnection.class.getName()));
+    var absolutePath = path.toAbsolutePath().toString();
+
+    log.log(Level.INFO, "Initializing SQLite Database connection pool at path: {0}", absolutePath);
 
     var config = new HikariConfig();
-    config.setJdbcUrl(url);
+    config.setJdbcUrl("jdbc:sqlite:" + absolutePath);
     config.setMaximumPoolSize(10);
-    config.setConnectionInitSql(
-        "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;");
+    config.setConnectionInitSql(INIT_SQL);
 
-    // Enable Prepared Statement caching for Hikari / SQLite
+    // Cache config
     config.addDataSourceProperty("cachePrepStmts", "true");
     config.addDataSourceProperty("prepStmtCacheSize", "250");
     config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");

@@ -3,7 +3,6 @@ package com.github.paperorm.mapping;
 import com.github.paperorm.exception.MappingException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
@@ -13,51 +12,58 @@ public final class EntityMapper<T> {
 
   private final Class<T> entityClass;
   private final TypeMapper typeMapper;
+  private final IdResolver idResolver;
   private final Constructor<T> constructor;
 
-  public EntityMapper(Class<T> entityClass, TypeMapper typeMapper) {
+  public EntityMapper(Class<T> entityClass, TypeMapper typeMapper, IdResolver idResolver) {
     this.entityClass = entityClass;
     this.typeMapper = typeMapper;
+    this.idResolver = idResolver;
+    this.constructor = resolveConstructor(entityClass);
+  }
+
+  private Constructor<T> resolveConstructor(Class<T> clazz) {
+    return (Constructor<T>) getNoArgConstructor(clazz);
+  }
+
+  private static Constructor<?> getNoArgConstructor(Class<?> clazz) {
     try {
-      this.constructor = entityClass.getDeclaredConstructor();
-      this.constructor.setAccessible(true);
-    } catch (NoSuchMethodException exception) {
-      throw new MappingException(
-          "Entity " + entityClass.getName() + " needs a no-args constructor", exception);
+      var ctor = clazz.getDeclaredConstructor();
+      if (!ctor.trySetAccessible()) {
+        throw new MappingException(
+            "Could not make constructor of " + clazz.getName() + " accessible");
+      }
+      return ctor;
+    } catch (NoSuchMethodException e) {
+      throw new MappingException("Entity " + clazz.getName() + " needs a no-args constructor", e);
     }
   }
 
   public T mapRow(ResultSet resultSet, List<ColumnMetadata> columns) throws SQLException {
-    T entity;
-
     try {
-      entity = this.constructor.newInstance();
-    } catch (InstantiationException
-        | IllegalAccessException
-        | InvocationTargetException exception) {
-      throw new MappingException(
-          "Failed to instantiate entity " + this.entityClass.getName(), exception);
+      T entity = this.constructor.newInstance();
+      for (var column : columns) {
+        var value = this.typeMapper.readColumnValue(resultSet, column);
+        writeField(column, entity, value);
+      }
+      return entity;
+    } catch (ReflectiveOperationException e) {
+      throw new MappingException("Failed to instantiate entity " + this.entityClass.getName(), e);
     }
-
-    for (var column : columns) {
-      var value = this.typeMapper.readColumnValue(resultSet, column);
-      writeField(column, entity, value);
-    }
-
-    return entity;
   }
 
   public Object readField(ColumnMetadata column, T entity) {
     try {
       var field = column.field();
       var value = field.get(entity);
-      if (column.manyToOne() && value != null) {
-        var idField = IdResolver.resolve(value.getClass());
-        return idField.get(value);
+      if (!column.manyToOne() || value == null) {
+        return value;
       }
-      return value;
-    } catch (IllegalAccessException exception) {
-      throw new MappingException("Failed to read field " + column.field().getName(), exception);
+
+      var idField = this.idResolver.resolve(value.getClass());
+      return idField.get(value);
+    } catch (IllegalAccessException e) {
+      throw new MappingException("Failed to read field " + column.field().getName(), e);
     }
   }
 
@@ -76,43 +82,47 @@ public final class EntityMapper<T> {
 
       var shell = createReferencedShell(column.referencedClass(), value);
       field.set(entity, shell);
-    } catch (IllegalAccessException exception) {
-      throw new MappingException("Failed to write field " + column.field().getName(), exception);
+    } catch (IllegalAccessException e) {
+      throw new MappingException("Failed to write field " + column.field().getName(), e);
     }
   }
 
-  private static void coerceAndSet(Field field, Object target, Object value) {
-    var type = field.getType();
-
+  private void coerceAndSet(Field field, Object target, Object value) {
     if (value == null) {
       setField(field, target, null);
       return;
     }
 
-    if ((type == Integer.class || type == int.class) && value instanceof Number num) {
-      setField(field, target, num.intValue());
-      return;
+    var type = field.getType();
+    if (value instanceof Number num) {
+      if (type == Integer.class || type == int.class) {
+        setField(field, target, num.intValue());
+        return;
+      }
+      if (type == Long.class || type == long.class) {
+        setField(field, target, num.longValue());
+        return;
+      }
+      if (type == Short.class || type == short.class) {
+        setField(field, target, num.shortValue());
+        return;
+      }
+      if (type == Byte.class || type == byte.class) {
+        setField(field, target, num.byteValue());
+        return;
+      }
     }
-    if ((type == Long.class || type == long.class) && value instanceof Number num) {
-      setField(field, target, num.longValue());
-      return;
-    }
-    if ((type == Short.class || type == short.class) && value instanceof Number num) {
-      setField(field, target, num.shortValue());
-      return;
-    }
-    if ((type == Byte.class || type == byte.class) && value instanceof Number num) {
-      setField(field, target, num.byteValue());
-      return;
-    }
-    if (type == String.class && !(value instanceof String)) {
+
+    if (type == String.class) {
       setField(field, target, value.toString());
       return;
     }
+
     if (type == UUID.class && value instanceof String str) {
       setField(field, target, UUID.fromString(str));
       return;
     }
+
     if (!type.isInstance(value)) {
       throw new MappingException(
           "ID type mismatch: expected "
@@ -122,10 +132,11 @@ public final class EntityMapper<T> {
               + " with value "
               + value);
     }
+
     setField(field, target, value);
   }
 
-  private static void setField(Field field, Object target, Object value) {
+  private void setField(Field field, Object target, Object value) {
     try {
       field.set(target, value);
     } catch (IllegalAccessException e) {
@@ -133,23 +144,16 @@ public final class EntityMapper<T> {
     }
   }
 
-  private static Object createReferencedShell(Class<?> clazz, Object idValue) {
+  private Object createReferencedShell(Class<?> clazz, Object idValue) {
     try {
-      var ctor = clazz.getDeclaredConstructor();
-      ctor.setAccessible(true);
+      var ctor = getNoArgConstructor(clazz);
       var shell = ctor.newInstance();
-
-      var idField = IdResolver.resolve(clazz);
+      var idField = this.idResolver.resolve(clazz);
       coerceAndSet(idField, shell, idValue);
       return shell;
-    } catch (ReflectiveOperationException exception) {
-      throw new MappingException(
-          "Failed to create referenced shell for " + clazz.getName(), exception);
+    } catch (ReflectiveOperationException e) {
+      throw new MappingException("Failed to create referenced shell for " + clazz.getName(), e);
     }
-  }
-
-  public void setGeneratedId(ColumnMetadata idColumn, T entity, long generatedId) {
-    coerceAndSet(idColumn.field(), entity, Long.valueOf(generatedId));
   }
 
   public void setGeneratedId(ColumnMetadata idColumn, T entity, Object generatedId) {

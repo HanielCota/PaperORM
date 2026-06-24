@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.github.paperorm.TestEntity;
 import com.github.paperorm.mapping.EntityMetadata;
 import com.github.paperorm.mapping.ReflectionEntityScanner;
+import com.github.paperorm.mapping.TypeMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -16,7 +17,7 @@ class SqlDialectTest {
 
   @BeforeEach
   void setUp() {
-    var scanner = new ReflectionEntityScanner();
+    var scanner = new ReflectionEntityScanner(new TypeMapper());
     this.metadata = scanner.scan(TestEntity.class);
   }
 

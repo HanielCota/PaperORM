@@ -3,7 +3,6 @@ package com.github.paperorm.repository;
 import com.github.paperorm.repository.query.Specification;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
@@ -15,9 +14,18 @@ public final class MetricsRepository<T> extends ForwardingRepository<T> {
   private final AtomicLong deleteCount = new AtomicLong();
   private final AtomicLong queryCount = new AtomicLong();
   private final AtomicLong totalTimeNanos = new AtomicLong();
+  private volatile boolean enabled = true;
 
   public MetricsRepository(Repository<T> delegate) {
     super(delegate);
+  }
+
+  public boolean isEnabled() {
+    return enabled;
+  }
+
+  public void setEnabled(boolean enabled) {
+    this.enabled = enabled;
   }
 
   public long saveCount() {
@@ -54,15 +62,15 @@ public final class MetricsRepository<T> extends ForwardingRepository<T> {
   }
 
   @Override
-  public void ensureTable() {
-    queryCount.incrementAndGet();
-    timed(delegate::ensureTable);
-  }
-
-  @Override
   public void save(T entity) {
     saveCount.incrementAndGet();
     timed(() -> delegate.save(entity));
+  }
+
+  @Override
+  public void ensureTable() {
+    queryCount.incrementAndGet();
+    timed(delegate::ensureTable);
   }
 
   @Override
@@ -120,11 +128,6 @@ public final class MetricsRepository<T> extends ForwardingRepository<T> {
   }
 
   @Override
-  public void clearCache() {
-    timed(delegate::clearCache);
-  }
-
-  @Override
   public List<T> find(Specification<T> spec) {
     queryCount.incrementAndGet();
     return timed(() -> delegate.find(spec));
@@ -143,96 +146,15 @@ public final class MetricsRepository<T> extends ForwardingRepository<T> {
   }
 
   @Override
-  public CompletableFuture<Void> ensureTableAsync() {
-    queryCount.incrementAndGet();
-    return timedAsync(delegate.ensureTableAsync());
-  }
-
-  @Override
-  public CompletableFuture<Void> saveAsync(T entity) {
-    saveCount.incrementAndGet();
-    return timedAsync(delegate.saveAsync(entity));
-  }
-
-  @Override
-  public CompletableFuture<Void> saveAllAsync(Iterable<T> entities) {
-    saveCount.incrementAndGet();
-    return timedAsync(delegate.saveAllAsync(entities));
-  }
-
-  @Override
-  public CompletableFuture<Void> updateAsync(T entity) {
-    updateCount.incrementAndGet();
-    return timedAsync(delegate.updateAsync(entity));
-  }
-
-  @Override
-  public CompletableFuture<Void> updateAllAsync(Iterable<T> entities) {
-    updateCount.incrementAndGet();
-    return timedAsync(delegate.updateAllAsync(entities));
-  }
-
-  @Override
-  public CompletableFuture<Void> deleteAsync(T entity) {
-    deleteCount.incrementAndGet();
-    return timedAsync(delegate.deleteAsync(entity));
-  }
-
-  @Override
-  public CompletableFuture<Void> deleteByIdAsync(Object id) {
-    deleteCount.incrementAndGet();
-    return timedAsync(delegate.deleteByIdAsync(id));
-  }
-
-  @Override
-  public CompletableFuture<Optional<T>> findByIdAsync(Object id) {
-    findCount.incrementAndGet();
-    return timedAsync(delegate.findByIdAsync(id));
-  }
-
-  @Override
-  public CompletableFuture<List<T>> findAllAsync() {
-    queryCount.incrementAndGet();
-    return timedAsync(delegate.findAllAsync());
-  }
-
-  @Override
-  public CompletableFuture<List<T>> findByAsync(String column, Object value) {
-    queryCount.incrementAndGet();
-    return timedAsync(delegate.findByAsync(column, value));
-  }
-
-  @Override
-  public CompletableFuture<Boolean> existsByIdAsync(Object id) {
-    queryCount.incrementAndGet();
-    return timedAsync(delegate.existsByIdAsync(id));
-  }
-
-  @Override
-  public CompletableFuture<List<T>> findByQueryAsync(String whereClause, Object... parameters) {
-    queryCount.incrementAndGet();
-    return timedAsync(delegate.findByQueryAsync(whereClause, parameters));
-  }
-
-  @Override
-  public CompletableFuture<Long> countByQueryAsync(String whereClause, Object... parameters) {
-    queryCount.incrementAndGet();
-    return timedAsync(delegate.countByQueryAsync(whereClause, parameters));
-  }
-
-  @Override
-  public CompletableFuture<List<T>> findAsync(Specification<T> spec) {
-    queryCount.incrementAndGet();
-    return timedAsync(delegate.findAsync(spec));
-  }
-
-  private <R> CompletableFuture<R> timedAsync(CompletableFuture<R> future) {
-    var start = System.nanoTime();
-    return future.whenComplete(
-        (result, exception) -> totalTimeNanos.addAndGet(System.nanoTime() - start));
+  public void clearCache() {
+    timed(delegate::clearCache);
   }
 
   private void timed(Runnable action) {
+    if (!enabled) {
+      action.run();
+      return;
+    }
     var start = System.nanoTime();
     try {
       action.run();
@@ -242,6 +164,9 @@ public final class MetricsRepository<T> extends ForwardingRepository<T> {
   }
 
   private <R> R timed(Supplier<R> action) {
+    if (!enabled) {
+      return action.get();
+    }
     var start = System.nanoTime();
     try {
       return action.get();

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.github.paperorm.OrmContext;
 import com.github.paperorm.annotation.Column;
 import com.github.paperorm.annotation.Entity;
 import com.github.paperorm.annotation.Id;
@@ -17,10 +18,10 @@ import com.github.paperorm.annotation.PreUpdate;
 import com.github.paperorm.annotation.Table;
 import com.github.paperorm.annotation.Transient;
 import com.github.paperorm.database.SqliteDatabaseConnection;
-import com.github.paperorm.database.VoidTransactionCallback;
 import com.github.paperorm.dialect.SqlDialect;
 import com.github.paperorm.dialect.SqliteDialect;
 import com.github.paperorm.mapping.EntityScanner;
+import com.github.paperorm.mapping.IdResolver;
 import com.github.paperorm.mapping.ReflectionEntityScanner;
 import com.github.paperorm.mapping.TypeMapper;
 import java.nio.file.Path;
@@ -38,14 +39,26 @@ class SqlRepositoryTest {
   private EntityScanner scanner;
   private SqlDialect dialect;
   private TypeMapper typeMapper;
+  private OrmContext context;
 
   @BeforeEach
   void setUp() {
     connection = new SqliteDatabaseConnection(tempDir.resolve("test.db"));
-    scanner = new ReflectionEntityScanner();
-    dialect = new SqliteDialect();
     typeMapper = new TypeMapper();
-    repository = new SqlRepository<>(TestReward.class, connection, scanner, dialect, typeMapper);
+    scanner = new ReflectionEntityScanner(typeMapper);
+    dialect = new SqliteDialect();
+    context =
+        new OrmContext(
+            connection,
+            scanner,
+            dialect,
+            typeMapper,
+            new IdResolver(),
+            Runnable::run,
+            true,
+            false,
+            null);
+    repository = new SqlRepository<>(TestReward.class, context);
   }
 
   @AfterEach
@@ -141,8 +154,7 @@ class SqlRepositoryTest {
 
   @Test
   void shouldGenerateAutoIncrementId() {
-    var autoRepository =
-        new SqlRepository<>(AutoReward.class, connection, scanner, dialect, typeMapper);
+    var autoRepository = new SqlRepository<>(AutoReward.class, context);
     autoRepository.ensureTable();
 
     var reward = new AutoReward();
@@ -183,11 +195,10 @@ class SqlRepositoryTest {
 
     try {
       connection.runInTransaction(
-          (VoidTransactionCallback)
-              txConnection -> {
-                repository.save(reward);
-                throw new RuntimeException("Rollback transaction");
-              });
+          txConnection -> {
+            repository.save(reward);
+            throw new RuntimeException("Rollback transaction");
+          });
     } catch (RuntimeException ignored) {
       // Expected: forced rollback
     }
@@ -233,8 +244,7 @@ class SqlRepositoryTest {
 
   @Test
   void shouldMapRelationshipAndRunCustomQueries() {
-    var txRepository =
-        new SqlRepository<>(TestTransaction.class, connection, scanner, dialect, typeMapper);
+    var txRepository = new SqlRepository<>(TestTransaction.class, context);
     repository.ensureTable();
     txRepository.ensureTable();
 
@@ -249,7 +259,6 @@ class SqlRepositoryTest {
     assertNotNull(tx1.id);
     assertNotNull(tx2.id);
 
-    // Test findById relationship mapping (referenced shell)
     var foundTxOpt = txRepository.findById(tx1.id);
     assertTrue(foundTxOpt.isPresent());
     var foundTx = foundTxOpt.get();
@@ -257,7 +266,6 @@ class SqlRepositoryTest {
     assertNotNull(foundTx.reward);
     assertEquals(100L, foundTx.reward.id);
 
-    // Test findByQuery / custom queries
     var deposits = txRepository.findByQuery("type = ? AND reward_id = ?", "DEPOSIT", 100L);
     assertEquals(1, deposits.size());
     assertEquals(tx1.id, deposits.getFirst().id);
@@ -265,20 +273,15 @@ class SqlRepositoryTest {
 
   @Test
   void shouldAutoMigrateNewColumns() throws Exception {
-    // 1. Create table manually with missing columns
     try (var conn = connection.openConnection();
         var stmt = conn.createStatement()) {
       stmt.executeUpdate("CREATE TABLE auto_migrate_entities (id INTEGER PRIMARY KEY, name TEXT)");
     }
 
-    // 2. Instantiate repository for entity that has new fields
-    var migrateRepository =
-        new SqlRepository<>(AutoMigrateEntity.class, connection, scanner, dialect, typeMapper);
+    var migrateRepository = new SqlRepository<>(AutoMigrateEntity.class, context);
 
-    // 3. ensureTable should alter the table to add newColumn
     migrateRepository.ensureTable();
 
-    // 4. Test that we can save and retrieve data using the new column
     var entity = new AutoMigrateEntity(1L, "MigrationTest", "SomeNewValue");
     migrateRepository.save(entity);
 
@@ -290,14 +293,11 @@ class SqlRepositoryTest {
 
   @Test
   void shouldApplyUniqueAndIndexConstraints() {
-    var indexedRepo =
-        new SqlRepository<>(IndexedEntity.class, connection, scanner, dialect, typeMapper);
+    var indexedRepo = new SqlRepository<>(IndexedEntity.class, context);
     indexedRepo.ensureTable();
 
-    // 1. Save first profile
     indexedRepo.save(new IndexedEntity(1L, "uuid-1"));
 
-    // 2. Save second profile with duplicate UUID (should fail because of UNIQUE)
     assertThrows(Exception.class, () -> indexedRepo.save(new IndexedEntity(2L, "uuid-1")));
   }
 
@@ -325,8 +325,7 @@ class SqlRepositoryTest {
 
   @Test
   void shouldFireLifecycleCallbacks() {
-    var cbRepo =
-        new SqlRepository<>(CallbackEntity.class, connection, scanner, dialect, typeMapper);
+    var cbRepo = new SqlRepository<>(CallbackEntity.class, context);
     cbRepo.ensureTable();
 
     var entity = new CallbackEntity();
@@ -352,7 +351,7 @@ class SqlRepositoryTest {
 
   @Test
   void shouldWorkWithEnumField() {
-    var enumRepo = new SqlRepository<>(EnumEntity.class, connection, scanner, dialect, typeMapper);
+    var enumRepo = new SqlRepository<>(EnumEntity.class, context);
     enumRepo.ensureTable();
 
     var entity = new EnumEntity();
@@ -389,9 +388,9 @@ class SqlRepositoryTest {
   @Test
   void shouldRejectNullArgs() {
     repository.ensureTable();
-    assertThrows(IllegalArgumentException.class, () -> repository.save(null));
-    assertThrows(IllegalArgumentException.class, () -> repository.findById(null));
-    assertThrows(IllegalArgumentException.class, () -> repository.deleteById(null));
+    assertThrows(NullPointerException.class, () -> repository.save(null));
+    assertThrows(NullPointerException.class, () -> repository.findById(null));
+    assertThrows(NullPointerException.class, () -> repository.deleteById(null));
   }
 
   @Test
@@ -413,7 +412,7 @@ class SqlRepositoryTest {
 
   @Test
   void shouldBatchSaveWithAutoIncrement() {
-    var autoRepo = new SqlRepository<>(AutoReward.class, connection, scanner, dialect, typeMapper);
+    var autoRepo = new SqlRepository<>(AutoReward.class, context);
     autoRepo.ensureTable();
 
     var a = new AutoReward();
@@ -514,6 +513,7 @@ class SqlRepositoryTest {
 
 @Entity
 @Table(name = "callback_entities")
+@lombok.NoArgsConstructor
 class CallbackEntity {
   @Id(autoIncrement = true)
   Long id;
@@ -523,8 +523,6 @@ class CallbackEntity {
   boolean preUpdateFired = false;
   boolean postLoadFired = false;
   boolean preDeleteFired = false;
-
-  CallbackEntity() {}
 
   @PrePersist
   void onPrePersist() {
@@ -555,6 +553,7 @@ enum Status {
 
 @Entity
 @Table(name = "enum_entities")
+@lombok.NoArgsConstructor
 class EnumEntity {
   @Id(autoIncrement = true)
   Long id;
@@ -562,12 +561,12 @@ class EnumEntity {
   @Column String name;
 
   @Column Status status;
-
-  EnumEntity() {}
 }
 
 @Entity
 @Table(name = "indexed_entities")
+@lombok.NoArgsConstructor
+@lombok.AllArgsConstructor
 class IndexedEntity {
 
   @Id Long id;
@@ -575,17 +574,11 @@ class IndexedEntity {
   @Column(unique = true)
   @com.github.paperorm.annotation.Index
   String uuid;
-
-  IndexedEntity() {}
-
-  IndexedEntity(Long id, String uuid) {
-    this.id = id;
-    this.uuid = uuid;
-  }
 }
 
 @Entity
 @Table(name = "test_rewards")
+@lombok.NoArgsConstructor
 class TestReward {
 
   @Id Long id;
@@ -598,9 +591,6 @@ class TestReward {
 
   @Transient String temporaryCache = "default";
 
-  // Required by EntityMapper for reflection-based instantiation
-  TestReward() {}
-
   TestReward(Long id, String name, double amount) {
     this.id = id;
     this.name = name;
@@ -610,6 +600,7 @@ class TestReward {
 
 @Entity
 @Table(name = "auto_rewards")
+@lombok.NoArgsConstructor
 class AutoReward {
 
   @Id(autoIncrement = true)
@@ -620,13 +611,12 @@ class AutoReward {
 
   @Column(nullable = false)
   double amount;
-
-  // Required by EntityMapper for reflection-based instantiation
-  AutoReward() {}
 }
 
 @Entity
 @Table(name = "test_transactions")
+@lombok.NoArgsConstructor
+@lombok.AllArgsConstructor
 class TestTransaction {
 
   @Id(autoIncrement = true)
@@ -636,18 +626,12 @@ class TestTransaction {
   String type;
 
   @ManyToOne TestReward reward;
-
-  TestTransaction() {}
-
-  TestTransaction(Long id, String type, TestReward reward) {
-    this.id = id;
-    this.type = type;
-    this.reward = reward;
-  }
 }
 
 @Entity
 @Table(name = "auto_migrate_entities")
+@lombok.NoArgsConstructor
+@lombok.AllArgsConstructor
 class AutoMigrateEntity {
 
   @Id Long id;
@@ -655,12 +639,4 @@ class AutoMigrateEntity {
   @Column String name;
 
   @Column String newColumn;
-
-  AutoMigrateEntity() {}
-
-  AutoMigrateEntity(Long id, String name, String newColumn) {
-    this.id = id;
-    this.name = name;
-    this.newColumn = newColumn;
-  }
 }

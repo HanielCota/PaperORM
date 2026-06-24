@@ -1,16 +1,17 @@
 package com.github.paperorm.repository;
 
+import com.github.paperorm.OrmContext;
 import com.github.paperorm.OrmSession;
 import com.github.paperorm.database.DatabaseConnection;
 import com.github.paperorm.dialect.SqlDialect;
 import com.github.paperorm.exception.OrmException;
 import com.github.paperorm.mapping.EntityMapper;
 import com.github.paperorm.mapping.EntityMetadata;
-import com.github.paperorm.mapping.EntityScanner;
+import com.github.paperorm.mapping.IdResolver;
 import com.github.paperorm.mapping.TypeMapper;
 import com.github.paperorm.repository.query.Query;
+import com.github.paperorm.repository.query.Spec;
 import com.github.paperorm.repository.query.Specification;
-import com.github.paperorm.repository.query.SqlQuery;
 import com.github.paperorm.schema.SchemaManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -18,11 +19,13 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-import java.util.concurrent.ForkJoinPool;
-import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import lombok.Getter;
 
 public final class SqlRepository<T> implements Repository<T> {
 
@@ -31,115 +34,43 @@ public final class SqlRepository<T> implements Repository<T> {
   private final SqlDialect dialect;
   private final EntityMapper<T> entityMapper;
   private final TypeMapper typeMapper;
-  private final Executor executor;
+  @Getter private final Executor executor;
+  private final IdResolver idResolver;
   private final IdentityMap<T> identityMap;
   private final CompletableFuture<Void> migrationsFuture;
   private volatile boolean migrationsAwaited;
   private final LifecycleDispatcher<T> lifecycle;
   private final SqlExecutor sqlExecutor;
   private final String entityClassName;
+  private final Set<String> columnLowerNames;
 
-  public SqlRepository(
-      Class<T> entityClass,
-      DatabaseConnection databaseConnection,
-      EntityScanner scanner,
-      SqlDialect dialect,
-      TypeMapper typeMapper) {
-    this(
-        entityClass,
-        databaseConnection,
-        scanner,
-        dialect,
-        typeMapper,
-        ForkJoinPool.commonPool(),
-        true,
-        null);
+  public SqlRepository(Class<T> entityClass, OrmContext context) {
+    this(entityClass, context, null);
   }
 
-  public SqlRepository(
-      Class<T> entityClass,
-      DatabaseConnection databaseConnection,
-      EntityScanner scanner,
-      SqlDialect dialect,
-      TypeMapper typeMapper,
-      Executor executor) {
-    this(entityClass, databaseConnection, scanner, dialect, typeMapper, executor, true, null);
-  }
-
-  public SqlRepository(
-      Class<T> entityClass,
-      DatabaseConnection databaseConnection,
-      EntityScanner scanner,
-      SqlDialect dialect,
-      TypeMapper typeMapper,
-      Executor executor,
-      boolean useCache) {
-    this(entityClass, databaseConnection, scanner, dialect, typeMapper, executor, useCache, null);
-  }
-
-  public SqlRepository(
-      Class<T> entityClass,
-      DatabaseConnection databaseConnection,
-      EntityScanner scanner,
-      SqlDialect dialect,
-      TypeMapper typeMapper,
-      Executor executor,
-      boolean useCache,
-      CompletableFuture<Void> migrationsFuture) {
-    this.metadata = scanner.scan(entityClass);
-    this.databaseConnection = databaseConnection;
-    this.dialect = dialect;
-    this.typeMapper = typeMapper;
-    this.entityMapper = new EntityMapper<>(entityClass, typeMapper);
-    this.executor = executor;
-    this.identityMap = new IdentityMap<>(null, entityClass, useCache);
-    this.migrationsFuture = migrationsFuture;
+  public SqlRepository(Class<T> entityClass, OrmContext context, OrmSession session) {
+    Objects.requireNonNull(entityClass, "entityClass");
+    Objects.requireNonNull(context, "context");
+    this.metadata = context.scanner().scan(entityClass);
+    this.databaseConnection = session != null ? session.connection() : context.connection();
+    this.dialect = context.dialect();
+    this.typeMapper = context.typeMapper();
+    this.idResolver = context.idResolver();
+    this.entityMapper = new EntityMapper<>(entityClass, typeMapper, this.idResolver);
+    this.executor = context.executor();
+    this.identityMap =
+        session != null
+            ? IdentityMap.sessionScoped(session, entityClass)
+            : IdentityMap.local(entityClass, context.useCache());
+    this.migrationsFuture = context.migrationsFuture();
     this.lifecycle = new LifecycleDispatcher<>(entityClass);
-    this.sqlExecutor = new SqlExecutor(databaseConnection);
+    this.sqlExecutor = new SqlExecutor(this.databaseConnection);
     this.entityClassName = entityClass.getSimpleName();
-  }
-
-  public SqlRepository(Class<T> entityClass, SqlRepositoryConfig config) {
-    this(
-        entityClass,
-        config.connection(),
-        config.scanner(),
-        config.dialect(),
-        config.typeMapper(),
-        config.executor(),
-        config.useCache(),
-        config.migrationsFuture());
-  }
-
-  public SqlRepository(
-      Class<T> entityClass,
-      OrmSession session,
-      EntityScanner scanner,
-      SqlDialect dialect,
-      TypeMapper typeMapper,
-      Executor executor) {
-    this(entityClass, session, scanner, dialect, typeMapper, executor, null);
-  }
-
-  public SqlRepository(
-      Class<T> entityClass,
-      OrmSession session,
-      EntityScanner scanner,
-      SqlDialect dialect,
-      TypeMapper typeMapper,
-      Executor executor,
-      CompletableFuture<Void> migrationsFuture) {
-    this.metadata = scanner.scan(entityClass);
-    this.databaseConnection = session.connection();
-    this.dialect = dialect;
-    this.typeMapper = typeMapper;
-    this.entityMapper = new EntityMapper<>(entityClass, typeMapper);
-    this.executor = executor;
-    this.identityMap = new IdentityMap<>(session, entityClass, true);
-    this.migrationsFuture = migrationsFuture;
-    this.lifecycle = new LifecycleDispatcher<>(entityClass);
-    this.sqlExecutor = new SqlExecutor(databaseConnection);
-    this.entityClassName = entityClass.getSimpleName();
+    this.columnLowerNames =
+        this.metadata.columns().stream()
+            .map(com.github.paperorm.mapping.ColumnMetadata::columnName)
+            .map(String::toLowerCase)
+            .collect(Collectors.toUnmodifiableSet());
   }
 
   // -------------------- sync CRUD --------------------
@@ -152,40 +83,34 @@ public final class SqlRepository<T> implements Repository<T> {
 
   @Override
   public void save(T entity) {
-    if (entity == null) {
-      throw new IllegalArgumentException("Entity cannot be null");
-    }
+    Objects.requireNonNull(entity, "Entity cannot be null");
     this.lifecycle.firePrePersist(entity);
     var idColumn = this.metadata.idColumn();
-    var autoIncrement = idColumn.autoIncrement();
+    var isAuto = idColumn.autoIncrement();
 
     awaitMigrations();
-    this.sqlExecutor.execute(
+    this.sqlExecutor.executeVoid(
         errorMsg("save"),
         connection -> {
           var sql = this.dialect.insert(this.metadata);
           try (var statement =
               connection.prepareStatement(
-                  sql,
-                  autoIncrement ? Statement.RETURN_GENERATED_KEYS : Statement.NO_GENERATED_KEYS)) {
+                  sql, isAuto ? Statement.RETURN_GENERATED_KEYS : Statement.NO_GENERATED_KEYS)) {
             bindInsertParameters(statement, entity);
             if (statement.executeUpdate() == 0) {
-              throw new OrmException(errorMsg("save") + ", no rows affected");
+              throw new OrmException("Failed to save, no rows affected");
             }
-            if (autoIncrement) {
+            if (isAuto) {
               assignGeneratedKey(statement, idColumn, entity);
             }
             registerInIdentityMap(entity, idColumn);
           }
-          return null;
         });
   }
 
   @Override
   public void saveAll(Iterable<T> entities) {
-    if (entities == null) {
-      throw new IllegalArgumentException("Entities cannot be null");
-    }
+    Objects.requireNonNull(entities, "Entities cannot be null");
     var idColumn = this.metadata.idColumn();
 
     var entityList = new ArrayList<T>();
@@ -212,7 +137,7 @@ public final class SqlRepository<T> implements Repository<T> {
   private void saveAllAutoIncrement(
       List<T> entities, com.github.paperorm.mapping.ColumnMetadata idColumn) {
     awaitMigrations();
-    this.sqlExecutor.execute(
+    this.sqlExecutor.executeVoid(
         errorMsg("saveAll"),
         connection -> {
           var sql = this.dialect.insert(this.metadata);
@@ -230,7 +155,6 @@ public final class SqlRepository<T> implements Repository<T> {
               }
             }
           }
-          return null;
         });
 
     for (var entity : entities) {
@@ -240,7 +164,7 @@ public final class SqlRepository<T> implements Repository<T> {
 
   private void saveAllBatch(List<T> entities) {
     awaitMigrations();
-    this.sqlExecutor.execute(
+    this.sqlExecutor.executeVoid(
         errorMsg("saveAll"),
         connection -> {
           var sql = this.dialect.insert(this.metadata);
@@ -251,7 +175,6 @@ public final class SqlRepository<T> implements Repository<T> {
             }
             statement.executeBatch();
           }
-          return null;
         });
 
     var idColumn = this.metadata.idColumn();
@@ -262,9 +185,7 @@ public final class SqlRepository<T> implements Repository<T> {
 
   @Override
   public void update(T entity) {
-    if (entity == null) {
-      throw new IllegalArgumentException("Entity cannot be null");
-    }
+    Objects.requireNonNull(entity, "Entity cannot be null");
     this.lifecycle.firePreUpdate(entity);
     var idColumn = this.metadata.idColumn();
     var idValue = this.entityMapper.readField(idColumn, entity);
@@ -273,17 +194,16 @@ public final class SqlRepository<T> implements Repository<T> {
     }
 
     awaitMigrations();
-    this.sqlExecutor.execute(
+    this.sqlExecutor.executeVoid(
         errorMsg("update", idValue),
         connection -> {
           var sql = this.dialect.update(this.metadata);
           try (var statement = connection.prepareStatement(sql)) {
             bindUpdateParameters(statement, entity, idValue);
             if (statement.executeUpdate() == 0) {
-              throw new OrmException(errorMsg("update", idValue) + ", entity not found");
+              throw new OrmException("Failed to update, no rows affected");
             }
           }
-          return null;
         });
 
     this.identityMap.register(idValue, entity);
@@ -291,13 +211,11 @@ public final class SqlRepository<T> implements Repository<T> {
 
   @Override
   public void updateAll(Iterable<T> entities) {
-    if (entities == null) {
-      throw new IllegalArgumentException("Entities cannot be null");
-    }
+    Objects.requireNonNull(entities, "Entities cannot be null");
     var idColumn = this.metadata.idColumn();
 
     awaitMigrations();
-    this.sqlExecutor.execute(
+    this.sqlExecutor.executeVoid(
         errorMsg("updateAll"),
         connection -> {
           var sql = this.dialect.update(this.metadata);
@@ -309,7 +227,7 @@ public final class SqlRepository<T> implements Repository<T> {
               this.lifecycle.firePreUpdate(entity);
               var idValue = this.entityMapper.readField(idColumn, entity);
               if (idValue == null) {
-                throw new IllegalArgumentException("Cannot update entity with null ID");
+                throw new IllegalArgumentException("Entity must have a non-null ID to be updated");
               }
               bindUpdateParameters(statement, entity, idValue);
               statement.addBatch();
@@ -317,32 +235,33 @@ public final class SqlRepository<T> implements Repository<T> {
             }
             statement.executeBatch();
           }
-          return null;
         });
   }
 
   @Override
   public void delete(T entity) {
-    if (entity == null) {
-      throw new IllegalArgumentException("Entity cannot be null");
-    }
+    Objects.requireNonNull(entity, "Entity cannot be null");
     this.lifecycle.firePreDelete(entity);
     var idValue = this.entityMapper.readField(this.metadata.idColumn(), entity);
-    deleteById(idValue);
+    performDelete(idValue);
+    this.identityMap.evict(idValue);
   }
 
   @Override
   public void deleteById(Object id) {
-    if (id == null) {
-      throw new IllegalArgumentException("ID cannot be null");
-    }
+    Objects.requireNonNull(id, "ID cannot be null");
     var cached = this.identityMap.resolve(id);
     if (cached != null) {
       this.lifecycle.firePreDelete(cached);
     }
 
+    performDelete(id);
+    this.identityMap.evict(id);
+  }
+
+  private void performDelete(Object id) {
     awaitMigrations();
-    this.sqlExecutor.execute(
+    this.sqlExecutor.executeVoid(
         errorMsg("deleteById", id),
         connection -> {
           var sql = this.dialect.deleteById(this.metadata);
@@ -350,19 +269,14 @@ public final class SqlRepository<T> implements Repository<T> {
             this.typeMapper.setParameter(statement, 1, id);
             statement.executeUpdate();
           }
-          return null;
         });
-
-    this.identityMap.evict(id);
   }
 
   // -------------------- sync queries --------------------
 
   @Override
   public Optional<T> findById(Object id) {
-    if (id == null) {
-      throw new IllegalArgumentException("ID cannot be null");
-    }
+    Objects.requireNonNull(id, "ID cannot be null");
     var cached = this.identityMap.resolve(id);
     if (cached != null) {
       return Optional.of(cached);
@@ -377,7 +291,7 @@ public final class SqlRepository<T> implements Repository<T> {
             this.typeMapper.setParameter(statement, 1, id);
             try (var resultSet = statement.executeQuery()) {
               if (!resultSet.next()) {
-                return Optional.<T>empty();
+                return Optional.empty();
               }
               var entity = this.entityMapper.mapRow(resultSet, this.metadata.columns());
               this.lifecycle.firePostLoad(entity);
@@ -403,6 +317,7 @@ public final class SqlRepository<T> implements Repository<T> {
 
   @Override
   public List<T> findBy(String column, Object value) {
+    Objects.requireNonNull(column, "Column cannot be null");
     validateColumnExists(column);
 
     awaitMigrations();
@@ -421,6 +336,7 @@ public final class SqlRepository<T> implements Repository<T> {
 
   @Override
   public boolean existsById(Object id) {
+    Objects.requireNonNull(id, "ID cannot be null");
     awaitMigrations();
     return this.sqlExecutor.execute(
         errorMsg("existsById", id),
@@ -463,9 +379,7 @@ public final class SqlRepository<T> implements Repository<T> {
     return this.sqlExecutor.execute(
         errorMsg("countByQuery"),
         connection -> {
-          var baseSql =
-              "SELECT COUNT(*) FROM " + this.dialect.quoteIdentifier(this.metadata.tableName());
-          var sql = this.dialect.selectAllWithCondition(this.metadata, whereClause, baseSql);
+          var sql = this.dialect.countWithCondition(this.metadata, whereClause);
           try (var statement = connection.prepareStatement(sql)) {
             for (int i = 0; i < params.length; i++) {
               this.typeMapper.setParameter(statement, i + 1, params[i]);
@@ -487,79 +401,7 @@ public final class SqlRepository<T> implements Repository<T> {
 
   @Override
   public Query<T> select() {
-    return new SqlQuery<>(this, this.dialect);
-  }
-
-  // -------------------- async wrappers --------------------
-
-  @Override
-  public CompletableFuture<Void> ensureTableAsync() {
-    return asyncVoid(this::ensureTable);
-  }
-
-  @Override
-  public CompletableFuture<Void> saveAsync(T entity) {
-    return asyncVoid(() -> save(entity));
-  }
-
-  @Override
-  public CompletableFuture<Void> saveAllAsync(Iterable<T> entities) {
-    return asyncVoid(() -> saveAll(entities));
-  }
-
-  @Override
-  public CompletableFuture<Void> updateAsync(T entity) {
-    return asyncVoid(() -> update(entity));
-  }
-
-  @Override
-  public CompletableFuture<Void> updateAllAsync(Iterable<T> entities) {
-    return asyncVoid(() -> updateAll(entities));
-  }
-
-  @Override
-  public CompletableFuture<Void> deleteAsync(T entity) {
-    return asyncVoid(() -> delete(entity));
-  }
-
-  @Override
-  public CompletableFuture<Void> deleteByIdAsync(Object id) {
-    return asyncVoid(() -> deleteById(id));
-  }
-
-  @Override
-  public CompletableFuture<Optional<T>> findByIdAsync(Object id) {
-    return asyncSupply(() -> findById(id));
-  }
-
-  @Override
-  public CompletableFuture<List<T>> findAllAsync() {
-    return asyncSupply(this::findAll);
-  }
-
-  @Override
-  public CompletableFuture<List<T>> findByAsync(String column, Object value) {
-    return asyncSupply(() -> findBy(column, value));
-  }
-
-  @Override
-  public CompletableFuture<Boolean> existsByIdAsync(Object id) {
-    return asyncSupply(() -> existsById(id));
-  }
-
-  @Override
-  public CompletableFuture<List<T>> findByQueryAsync(String whereClause, Object... parameters) {
-    return asyncSupply(() -> findByQuery(whereClause, parameters));
-  }
-
-  @Override
-  public CompletableFuture<Long> countByQueryAsync(String whereClause, Object... parameters) {
-    return asyncSupply(() -> countByQuery(whereClause, parameters));
-  }
-
-  @Override
-  public CompletableFuture<List<T>> findAsync(Specification<T> spec) {
-    return asyncSupply(() -> find(spec));
+    return Spec.fromRepository(this, this.dialect);
   }
 
   // -------------------- cache --------------------
@@ -571,20 +413,16 @@ public final class SqlRepository<T> implements Repository<T> {
 
   // -------------------- private helpers --------------------
 
-  private CompletableFuture<Void> asyncVoid(Runnable action) {
-    return CompletableFuture.runAsync(action, this.executor);
-  }
-
-  private <R> CompletableFuture<R> asyncSupply(Supplier<R> action) {
-    return CompletableFuture.supplyAsync(action, this.executor);
+  private String errorMsg(String operation, Object... id) {
+    var msg = "Failed to " + operation + " " + this.entityClassName;
+    if (id != null && id.length > 0 && id[0] != null) {
+      msg += " with id " + id[0];
+    }
+    return msg;
   }
 
   private String errorMsg(String operation) {
     return "Failed to " + operation + " " + this.entityClassName;
-  }
-
-  private String errorMsg(String operation, Object id) {
-    return "Failed to " + operation + " " + this.entityClassName + " with id " + id;
   }
 
   private void bindInsertParameters(PreparedStatement statement, T entity) throws SQLException {
@@ -644,11 +482,7 @@ public final class SqlRepository<T> implements Repository<T> {
   }
 
   private void validateColumnExists(String column) {
-    var valid =
-        this.metadata.columns().stream()
-            .map(com.github.paperorm.mapping.ColumnMetadata::columnName)
-            .anyMatch(column::equals);
-    if (!valid) {
+    if (!this.columnLowerNames.contains(column.toLowerCase())) {
       throw new IllegalArgumentException(
           "Column " + column + " not found in entity " + this.entityClassName);
     }

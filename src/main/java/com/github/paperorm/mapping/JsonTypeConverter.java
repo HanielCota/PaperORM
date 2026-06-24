@@ -4,16 +4,13 @@ import com.google.gson.Gson;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import lombok.RequiredArgsConstructor;
 
+@RequiredArgsConstructor
 public final class JsonTypeConverter<T> implements TypeConverter<T> {
 
   private final Class<T> type;
   private final Gson gson;
-
-  public JsonTypeConverter(Class<T> type, Gson gson) {
-    this.type = type;
-    this.gson = gson;
-  }
 
   @Override
   public Class<T> getType() {
@@ -26,6 +23,7 @@ public final class JsonTypeConverter<T> implements TypeConverter<T> {
       statement.setString(index, null);
       return;
     }
+
     statement.setString(index, this.gson.toJson(value));
   }
 
@@ -35,6 +33,7 @@ public final class JsonTypeConverter<T> implements TypeConverter<T> {
     if (raw == null) {
       return null;
     }
+
     return this.gson.fromJson(raw, this.type);
   }
 }

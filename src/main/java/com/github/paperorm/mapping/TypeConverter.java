@@ -11,4 +11,8 @@ public interface TypeConverter<T> {
   void setParameter(PreparedStatement statement, int index, T value) throws SQLException;
 
   T readValue(ResultSet resultSet, String columnName) throws SQLException;
+
+  default String getSqlType() {
+    return "TEXT";
+  }
 }

@@ -7,8 +7,8 @@ import com.github.paperorm.annotation.Entity;
 import com.github.paperorm.annotation.Id;
 import com.github.paperorm.database.SqliteDatabaseConnection;
 import com.github.paperorm.database.TransactionCallback;
-import com.github.paperorm.database.VoidTransactionCallback;
 import com.github.paperorm.dialect.SqliteDialect;
+import com.github.paperorm.mapping.IdResolver;
 import com.github.paperorm.mapping.ReflectionEntityScanner;
 import com.github.paperorm.mapping.TypeMapper;
 import java.nio.file.Path;
@@ -28,14 +28,22 @@ class OrmSessionTest {
   @BeforeEach
   void setUp() {
     connection = new SqliteDatabaseConnection(tempDir.resolve("test.db"));
-    var scanner = new ReflectionEntityScanner();
-    var dialect = new SqliteDialect();
     var typeMapper = new TypeMapper();
-    factory = new OrmFactory(connection, scanner, dialect, typeMapper, Runnable::run, true);
-    session = new OrmSession(connection, factory, true);
-
-    var repo = session.getRepository(SessionEntity.class);
-    repo.ensureTable();
+    var scanner = new ReflectionEntityScanner(typeMapper);
+    var dialect = new SqliteDialect();
+    var context =
+        new OrmContext(
+            connection,
+            scanner,
+            dialect,
+            typeMapper,
+            new IdResolver(),
+            Runnable::run,
+            true,
+            false,
+            null);
+    factory = new OrmFactory(context);
+    session = new OrmSession(context, factory);
   }
 
   @AfterEach
@@ -66,7 +74,21 @@ class OrmSessionTest {
   void shouldExposeCacheSetting() {
     assertTrue(session.isUseCache());
 
-    var disabledSession = new OrmSession(connection, factory, false);
+    var typeMapper = new TypeMapper();
+    var scanner = new ReflectionEntityScanner(typeMapper);
+    var dialect = new SqliteDialect();
+    var disabledCtx =
+        new OrmContext(
+            connection,
+            scanner,
+            dialect,
+            typeMapper,
+            new IdResolver(),
+            Runnable::run,
+            false,
+            false,
+            null);
+    var disabledSession = new OrmSession(disabledCtx, factory);
     assertFalse(disabledSession.isUseCache());
   }
 
@@ -79,6 +101,7 @@ class OrmSessionTest {
   @Test
   void shouldClearCacheOnClose() {
     var repo = session.getRepository(SessionEntity.class);
+    repo.ensureTable();
     var entity = new SessionEntity(1L, "Cached");
     repo.save(entity);
 
@@ -86,7 +109,22 @@ class OrmSessionTest {
     assertTrue(found.isPresent());
 
     session.close();
-    var session2 = new OrmSession(connection, factory, true);
+    var typeMapper = new TypeMapper();
+    var scanner = new ReflectionEntityScanner(typeMapper);
+    var dialect = new SqliteDialect();
+    var ctx2 =
+        new OrmContext(
+            connection,
+            scanner,
+            dialect,
+            typeMapper,
+            new IdResolver(),
+            Runnable::run,
+            true,
+            false,
+            null);
+    var factory2 = new OrmFactory(ctx2);
+    var session2 = new OrmSession(ctx2, factory2);
     var repo2 = session2.getRepository(SessionEntity.class);
     var found2 = repo2.findById(1L);
     assertTrue(found2.isPresent());
@@ -96,6 +134,7 @@ class OrmSessionTest {
   @Test
   void shouldRunTransactionAndClearCache() {
     var repo = session.getRepository(SessionEntity.class);
+    repo.ensureTable();
     var entity = new SessionEntity(100L, "TxTest");
     repo.save(entity);
 
@@ -115,15 +154,16 @@ class OrmSessionTest {
 
   @Test
   void shouldRunVoidTransaction() {
-    session.runInTransaction(
-        (VoidTransactionCallback)
-            conn -> {
-              var stmt = conn.createStatement();
-              stmt.executeUpdate(
-                  "INSERT INTO \"session_entity\" (\"id\", \"name\") VALUES (99, 'VoidTx')");
-            });
-
     var repo = session.getRepository(SessionEntity.class);
+    repo.ensureTable();
+    session.runInTransaction(
+        conn -> {
+          var stmt = conn.createStatement();
+          stmt.executeUpdate(
+              "INSERT INTO \"session_entity\" (\"id\", \"name\") VALUES (99, 'VoidTx')");
+          return null;
+        });
+
     var found = repo.findById(99L);
     assertTrue(found.isPresent());
     assertEquals("VoidTx", found.get().name);
@@ -131,6 +171,8 @@ class OrmSessionTest {
 
   @Test
   void shouldRunAsyncTransaction() throws Exception {
+    var repo = session.getRepository(SessionEntity.class);
+    repo.ensureTable();
     var future =
         session.runInTransactionAsync(
             (TransactionCallback<String>)
@@ -142,24 +184,24 @@ class OrmSessionTest {
                 });
 
     assertEquals("done", future.get());
-    var repo = session.getRepository(SessionEntity.class);
     var found = repo.findById(50L);
     assertTrue(found.isPresent());
   }
 
   @Test
   void shouldRunAsyncVoidTransaction() throws Exception {
+    var repo = session.getRepository(SessionEntity.class);
+    repo.ensureTable();
     var future =
         session.runInTransactionAsync(
-            (VoidTransactionCallback)
-                conn -> {
-                  var stmt = conn.createStatement();
-                  stmt.executeUpdate(
-                      "INSERT INTO \"session_entity\" (\"id\", \"name\") VALUES (51, 'AsyncVoid')");
-                });
+            conn -> {
+              var stmt = conn.createStatement();
+              stmt.executeUpdate(
+                  "INSERT INTO \"session_entity\" (\"id\", \"name\") VALUES (51, 'AsyncVoid')");
+              return null;
+            });
 
     future.get();
-    var repo = session.getRepository(SessionEntity.class);
     assertTrue(repo.findById(51L).isPresent());
   }
 
@@ -193,8 +235,6 @@ class OrmSessionTest {
     assertThrows(NullPointerException.class, () -> session.getRepository(null));
     assertThrows(
         NullPointerException.class, () -> session.runInTransaction((TransactionCallback<?>) null));
-    assertThrows(
-        NullPointerException.class, () -> session.runInTransaction((VoidTransactionCallback) null));
   }
 
   @Test
@@ -203,6 +243,8 @@ class OrmSessionTest {
   }
 
   @Entity
+  @lombok.NoArgsConstructor
+  @lombok.AllArgsConstructor
   public static class SessionEntity {
     @Id
     @Column(nullable = false)
@@ -210,12 +252,5 @@ class OrmSessionTest {
 
     @Column(nullable = false)
     private String name;
-
-    public SessionEntity() {}
-
-    public SessionEntity(Long id, String name) {
-      this.id = id;
-      this.name = name;
-    }
   }
 }

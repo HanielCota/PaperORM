@@ -51,6 +51,7 @@ public final class LifecycleDispatcher<T> {
     if (entity == null || methods.isEmpty()) {
       return;
     }
+
     for (var method : methods) {
       try {
         method.invoke(entity);
@@ -67,22 +68,34 @@ public final class LifecycleDispatcher<T> {
 
   private static List<Method> scanMethods(
       Class<?> entityClass,
-      Class<? extends Annotation> annotationClass,
+      Class<? extends Annotation> annotation,
       Map<Class<?>, List<Method>> cache) {
     return cache.computeIfAbsent(
         entityClass,
         clazz -> {
           var methods = new ArrayList<Method>();
-          var current = clazz;
-          while (current != null && current != Object.class) {
+
+          for (var current = clazz;
+              current != null && current != Object.class;
+              current = current.getSuperclass()) {
             for (var method : current.getDeclaredMethods()) {
-              if (method.isAnnotationPresent(annotationClass)) {
-                method.setAccessible(true);
-                methods.add(method);
+              if (!method.isAnnotationPresent(annotation)) {
+                continue;
               }
+
+              if (!method.trySetAccessible()) {
+                throw new OrmException(
+                    "Could not make lifecycle method "
+                        + clazz.getName()
+                        + "."
+                        + method.getName()
+                        + " accessible");
+              }
+
+              methods.add(method);
             }
-            current = current.getSuperclass();
           }
+
           return List.copyOf(methods);
         });
   }

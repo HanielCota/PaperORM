@@ -31,7 +31,7 @@ class PaperOrmTest {
   void setUp() {
     paperOrm =
         PaperOrm.builder()
-            .sqlite(tempDir.resolve("test.db"))
+            .connectionConfig(new ConnectionConfig.Sqlite(tempDir.resolve("test.db")))
             .registerEntity(TestEntity.class)
             .autoCreateTables(true)
             .build();
@@ -65,7 +65,7 @@ class PaperOrmTest {
   void shouldWorkWithVirtualThreads() {
     var vThreadOrm =
         PaperOrm.builder()
-            .sqlite(tempDir.resolve("vthreads.db"))
+            .connectionConfig(new ConnectionConfig.Sqlite(tempDir.resolve("vthreads.db")))
             .registerEntity(TestEntity.class)
             .useVirtualThreads()
             .autoCreateTables(true)
@@ -87,7 +87,7 @@ class PaperOrmTest {
   void shouldWorkWithCustomTypeConverter() {
     var converterOrm =
         PaperOrm.builder()
-            .sqlite(tempDir.resolve("converter.db"))
+            .connectionConfig(new ConnectionConfig.Sqlite(tempDir.resolve("converter.db")))
             .registerConverter(new CustomDataConverter())
             .registerEntity(CustomDataEntity.class)
             .autoCreateTables(true)
@@ -115,7 +115,7 @@ class PaperOrmTest {
     var logger = java.util.logging.Logger.getLogger("TestLogger");
     var loggerOrm =
         PaperOrm.builder()
-            .sqlite(tempDir.resolve("logger.db"))
+            .connectionConfig(new ConnectionConfig.Sqlite(tempDir.resolve("logger.db")))
             .logger(logger)
             .registerEntity(TestEntity.class)
             .autoCreateTables(true)
@@ -134,7 +134,7 @@ class PaperOrmTest {
   void shouldReuseCachedInstancesToPreserveIdentity() {
     var cacheOrm =
         PaperOrm.builder()
-            .sqlite(tempDir.resolve("cache.db"))
+            .connectionConfig(new ConnectionConfig.Sqlite(tempDir.resolve("cache.db")))
             .registerEntity(TestEntity.class)
             .useCache(true)
             .autoCreateTables(true)
@@ -152,21 +152,17 @@ class PaperOrmTest {
       assertTrue(first.isPresent());
       assertTrue(second.isPresent());
 
-      // Assert that both point to the exact same instance in memory (Identity Map)
       assertTrue(first.get() == second.get());
 
-      // Modify first
       first.get().setName("ModifiedInCache");
       assertEquals("ModifiedInCache", second.get().getName());
 
-      // Invalidate cache
       repository.clearCache();
 
       var third = repository.findById(savedId);
       assertTrue(third.isPresent());
-      // After cache clear, it should be a new instance
       assertTrue(first.get() != third.get());
-      assertEquals("CacheTest", third.get().getName()); // Read from DB, has old name
+      assertEquals("CacheTest", third.get().getName());
     } finally {
       cacheOrm.close();
     }
@@ -180,11 +176,10 @@ class PaperOrmTest {
       var repo = session.getRepository(TestEntity.class);
       try {
         session.runInTransaction(
-            (com.github.paperorm.database.VoidTransactionCallback)
-                conn -> {
-                  repo.save(reward);
-                  throw new RuntimeException("Rollback session");
-                });
+            conn -> {
+              repo.save(reward);
+              throw new RuntimeException("Rollback session");
+            });
       } catch (RuntimeException ignored) {
         // Expected: forced rollback
       }
@@ -205,11 +200,10 @@ class PaperOrmTest {
 
       var future =
           session.runInTransactionAsync(
-              (com.github.paperorm.database.VoidTransactionCallback)
-                  conn -> {
-                    repo.save(reward);
-                    throw new RuntimeException("Rollback session async");
-                  });
+              conn -> {
+                repo.save(reward);
+                throw new RuntimeException("Rollback session async");
+              });
 
       assertThrows(Exception.class, future::join);
 
@@ -232,22 +226,18 @@ class PaperOrmTest {
     repository.save(e2);
     repository.save(e3);
 
-    // Basic select eq
     var matches = repository.select().where("name").eq("Match").list();
     assertEquals(2, matches.size());
 
-    // Chain greaterThan and order
     var greater = repository.select().where("name").eq("Match").and("count").greaterThan(10).list();
     assertEquals(1, greater.size());
     assertEquals(e2.getId(), greater.getFirst().getId());
 
-    // Ordering and Limit
     var ordered =
         repository.select().where("name").eq("Match").orderBy("count", "DESC").limit(1).list();
     assertEquals(1, ordered.size());
     assertEquals(e2.getId(), ordered.getFirst().getId());
 
-    // Test isNull / isNotNull
     var nullActive = repository.select().where("active").isNull().list();
     assertEquals(1, nullActive.size());
     assertEquals(e3.getId(), nullActive.getFirst().getId());
@@ -255,7 +245,6 @@ class PaperOrmTest {
     var nonNullActive = repository.select().where("active").isNotNull().list();
     assertEquals(2, nonNullActive.size());
 
-    // Test IN operator
     var inList = repository.select().where("id").in(e1.getId(), e3.getId()).list();
     assertEquals(2, inList.size());
   }
@@ -266,7 +255,7 @@ class PaperOrmTest {
 
     var orm =
         PaperOrm.builder()
-            .sqlite(dbPath)
+            .connectionConfig(new ConnectionConfig.Sqlite(dbPath))
             .registerJsonConverter(CustomInfo.class)
             .registerEntity(CustomRepoEntity.class)
             .autoCreateTables(true)
@@ -294,7 +283,6 @@ class PaperOrmTest {
     var migrationsDir = tempDir.resolve("migrations");
     java.nio.file.Files.createDirectories(migrationsDir);
 
-    // Create migration V1.sql
     var v1 = migrationsDir.resolve("V1.sql");
     java.nio.file.Files.writeString(
         v1,
@@ -305,7 +293,6 @@ class PaperOrmTest {
         );
         """);
 
-    // Create migration V2.sql
     var v2 = migrationsDir.resolve("V2.sql");
     java.nio.file.Files.writeString(
         v2,
@@ -320,15 +307,17 @@ class PaperOrmTest {
     assertEquals(2, loadedMigrations.get(1).version());
 
     var dbPath = tempDir.resolve("migration_test.db");
-    var orm = PaperOrm.builder().sqlite(dbPath).migrations(loadedMigrations).build();
+    var orm =
+        PaperOrm.builder()
+            .connectionConfig(new ConnectionConfig.Sqlite(dbPath))
+            .migrations(loadedMigrations)
+            .build();
 
     try {
       orm.awaitMigrations();
-      // Execute a manual check query to make sure columns exist
       try (var conn = orm.connection().openConnection();
           var stmt = conn.createStatement();
           var rs = stmt.executeQuery("SELECT points FROM players_migrated")) {
-        // Should succeed without throwing exception since points column was added by V2 migration
         assertFalse(rs.next());
       } catch (SQLException e) {
         throw new RuntimeException("Migration failed", e);
@@ -348,16 +337,11 @@ class CustomDataEntity {
   @Column CustomData data;
 }
 
+@lombok.NoArgsConstructor
+@lombok.AllArgsConstructor
 class CustomData {
   String key;
   String value;
-
-  CustomData() {}
-
-  CustomData(String key, String value) {
-    this.key = key;
-    this.value = value;
-  }
 }
 
 class CustomDataConverter implements TypeConverter<CustomData> {
@@ -397,16 +381,11 @@ class CustomRepoEntity {
   @Column CustomInfo info;
 }
 
+@lombok.NoArgsConstructor
+@lombok.AllArgsConstructor
 class CustomInfo {
   String text;
   int code;
-
-  CustomInfo() {}
-
-  CustomInfo(String text, int code) {
-    this.text = text;
-    this.code = code;
-  }
 }
 
 class CustomEntityRepository

@@ -11,14 +11,6 @@ public interface DatabaseConnection extends AutoCloseable {
 
   <T> T runInTransaction(TransactionCallback<T> callback);
 
-  default void runInTransaction(VoidTransactionCallback callback) {
-    runInTransaction(
-        conn -> {
-          callback.apply(conn);
-          return null;
-        });
-  }
-
   @Override
   void close();
 }

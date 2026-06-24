@@ -30,12 +30,13 @@ public class MysqlIntegrationTest {
   static void setUp() {
     orm =
         PaperOrm.builder()
-            .mysql(
-                mysqlContainer.getHost(),
-                mysqlContainer.getMappedPort(3306),
-                mysqlContainer.getDatabaseName(),
-                mysqlContainer.getUsername(),
-                mysqlContainer.getPassword())
+            .connectionConfig(
+                new ConnectionConfig.MySql(
+                    mysqlContainer.getHost(),
+                    mysqlContainer.getMappedPort(3306),
+                    mysqlContainer.getDatabaseName(),
+                    mysqlContainer.getUsername(),
+                    mysqlContainer.getPassword()))
             .autoCreateTables(true)
             .registerEntity(TestEntity.class)
             .build();

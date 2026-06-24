@@ -1,8 +1,6 @@
 package com.github.paperorm.database;
 
 import com.github.paperorm.exception.ConnectionException;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Objects;
@@ -12,39 +10,29 @@ import javax.sql.DataSource;
 
 public class DataSourceDatabaseConnection implements DatabaseConnection {
 
+  private static final Logger DEFAULT_LOGGER =
+      Logger.getLogger(DataSourceDatabaseConnection.class.getName());
+
   private final DataSource dataSource;
   private final Logger logger;
   private final ThreadLocal<Connection> activeTransactionConnection = new ThreadLocal<>();
 
   public DataSourceDatabaseConnection(DataSource dataSource) {
-    this(dataSource, null);
+    this(dataSource, DEFAULT_LOGGER);
   }
 
   public DataSourceDatabaseConnection(DataSource dataSource, Logger logger) {
-    this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
-    this.logger =
-        logger != null ? logger : Logger.getLogger(DataSourceDatabaseConnection.class.getName());
+    this.dataSource = Objects.requireNonNull(dataSource, "dataSource cannot be null");
+    this.logger = Objects.requireNonNullElse(logger, DEFAULT_LOGGER);
   }
 
   @Override
   public Connection openConnection() throws SQLException {
-    var txConn = activeTransactionConnection.get();
+    Connection txConn = activeTransactionConnection.get();
     if (txConn != null) {
-      return (Connection)
-          Proxy.newProxyInstance(
-              Connection.class.getClassLoader(),
-              new Class<?>[] {Connection.class},
-              (proxy, method, args) -> {
-                if ("close".equals(method.getName())) {
-                  return null;
-                }
-                try {
-                  return method.invoke(txConn, args);
-                } catch (InvocationTargetException e) {
-                  throw e.getCause();
-                }
-              });
+      return txConn;
     }
+
     return this.dataSource.getConnection();
   }
 
@@ -58,63 +46,80 @@ public class DataSourceDatabaseConnection implements DatabaseConnection {
 
   @Override
   public <T> T runInTransaction(TransactionCallback<T> callback) {
-    Objects.requireNonNull(callback, "callback");
-    var existingConnection = activeTransactionConnection.get();
+    Objects.requireNonNull(callback, "callback cannot be null");
+
+    Connection existingConnection = activeTransactionConnection.get();
     if (existingConnection != null) {
-      try {
-        return callback.apply(existingConnection);
-      } catch (SQLException exception) {
-        throw new ConnectionException("Transaction failed", exception);
-      }
+      return executeCallback(callback, existingConnection);
     }
 
-    try (var connection = this.dataSource.getConnection()) {
-      var originalAutoCommit = connection.getAutoCommit();
-      connection.setAutoCommit(false);
+    try (Connection connection = this.dataSource.getConnection()) {
+      return executeNewTransaction(callback, connection);
+    } catch (SQLException e) {
+      throw new ConnectionException("Failed to open connection for transaction", e);
+    }
+  }
+
+  private <T> T executeCallback(TransactionCallback<T> callback, Connection connection) {
+    try {
+      return callback.apply(connection);
+    } catch (SQLException e) {
+      throw new ConnectionException("Transaction failed", e);
+    }
+  }
+
+  private <T> T executeNewTransaction(TransactionCallback<T> callback, Connection connection)
+      throws SQLException {
+    boolean originalAutoCommit = connection.getAutoCommit();
+    try {
+      if (originalAutoCommit) {
+        connection.setAutoCommit(false);
+      }
       activeTransactionConnection.set(connection);
 
-      try {
-        var result = callback.apply(connection);
-        connection.commit();
-        return result;
-      } catch (Exception exception) {
-        logger.log(Level.SEVERE, "Transaction failed, rolling back changes in database", exception);
+      T result = callback.apply(connection);
+      connection.commit();
+      return result;
+    } catch (Exception e) {
+      handleTransactionException(connection, e);
+      throw e;
+    } finally {
+      activeTransactionConnection.remove();
+      if (originalAutoCommit) {
         try {
-          connection.rollback();
-        } catch (SQLException rollbackException) {
-          exception.addSuppressed(rollbackException);
-        }
-        switch (exception) {
-          case SQLException sqlException ->
-              throw new ConnectionException("Transaction failed", sqlException);
-          case RuntimeException runtimeException -> throw runtimeException;
-          default ->
-              throw new ConnectionException("Transaction failed with checked exception", exception);
-        }
-      } finally {
-        activeTransactionConnection.remove();
-        try {
-          connection.setAutoCommit(originalAutoCommit);
+          connection.setAutoCommit(true);
         } catch (SQLException ignored) {
         }
       }
-    } catch (SQLException exception) {
-      throw new ConnectionException("Failed to open connection for transaction", exception);
     }
+  }
+
+  private void handleTransactionException(Connection connection, Exception e) {
+    logger.log(Level.SEVERE, "Transaction failed, rolling back changes", e);
+    try {
+      connection.rollback();
+    } catch (SQLException rollbackEx) {
+      e.addSuppressed(rollbackEx);
+    }
+
+    if (e instanceof RuntimeException runtimeException) {
+      throw runtimeException;
+    }
+    throw new ConnectionException("Transaction failed", e);
   }
 
   @Override
   public void close() {
-    if (this.dataSource instanceof AutoCloseable closeable) {
-      try {
-        logger.info("Closing database connection pool.");
-        closeable.close();
-      } catch (Exception exception) {
-        logger.log(Level.SEVERE, "Failed to close DataSource", exception);
-      }
-    } else {
-      logger.warning(
-          "DataSource does not implement AutoCloseable; connection pool may not have been closed.");
+    if (!(this.dataSource instanceof AutoCloseable closeable)) {
+      logger.warning("DataSource does not implement AutoCloseable; pool cannot be closed.");
+      return;
+    }
+
+    try {
+      logger.info("Closing database connection pool.");
+      closeable.close();
+    } catch (Exception e) {
+      logger.log(Level.SEVERE, "Failed to close DataSource", e);
     }
   }
 }

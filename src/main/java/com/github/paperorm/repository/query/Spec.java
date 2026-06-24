@@ -1,158 +1,215 @@
 package com.github.paperorm.repository.query;
 
 import com.github.paperorm.dialect.SqlDialect;
+import com.github.paperorm.repository.Repository;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
-public final class Spec<T> implements Specification<T> {
+public final class Spec<T> implements Specification<T>, Query<T> {
 
-  private final List<Fragment> fragments = new ArrayList<>();
-  private String currentColumn;
+  private final List<Fragment> fragments;
+  private final String currentColumn;
+  private final Repository<T> repository;
+  private final SqlDialect dialect;
 
-  private Spec() {}
-
-  Spec(List<Fragment> fragments) {
-    this.fragments.addAll(fragments);
+  private Spec(List<Fragment> fragments, String currentColumn) {
+    this.fragments = List.copyOf(fragments);
+    this.currentColumn = currentColumn;
+    this.repository = null;
+    this.dialect = null;
   }
 
-  @SuppressWarnings({"rawtypes", "unchecked"})
+  private Spec(
+      List<Fragment> fragments,
+      String currentColumn,
+      Repository<T> repository,
+      SqlDialect dialect) {
+    this.fragments = List.copyOf(fragments);
+    this.currentColumn = currentColumn;
+    this.repository = repository;
+    this.dialect = dialect;
+  }
+
+  public static <T> Spec<T> of(String column) {
+    Objects.requireNonNull(column, "column");
+    return new Spec<>(List.of(), column);
+  }
+
   static <T> Spec<T> empty() {
-    return new Spec();
+    return new Spec<>(List.of(), null);
   }
 
-  @SuppressWarnings({"rawtypes", "unchecked"})
-  Spec<T> copy() {
-    var fragments = new ArrayList<>(this.fragments);
-    Spec spec = new Spec(fragments);
-    spec.currentColumn = this.currentColumn;
-    return spec;
+  public static <T> Spec<T> fromRepository(Repository<T> repository, SqlDialect dialect) {
+    return new Spec<>(List.of(), null, repository, dialect);
   }
 
-  public static <T> Spec<T> where(String column) {
+  private Spec<T> withRepository(Repository<T> repo, SqlDialect dia) {
+    return new Spec<>(this.fragments, this.currentColumn, repo, dia);
+  }
+
+  private Spec<T> withFragment(Fragment fragment, String newColumn) {
+    var newFragments = new ArrayList<>(this.fragments);
+    newFragments.add(fragment);
+    return new Spec<>(newFragments, newColumn, this.repository, this.dialect);
+  }
+
+  private Spec<T> withColumn(String column) {
+    flushColumn();
+    return new Spec<>(this.fragments, column, this.repository, this.dialect);
+  }
+
+  private Spec<T> withFragments(List<Fragment> fragments) {
+    return new Spec<>(fragments, this.currentColumn, this.repository, this.dialect);
+  }
+
+  // -- Query interface (fluent builders) --
+
+  @Override
+  public Spec<T> where(String column) {
     Objects.requireNonNull(column, "column");
-    var spec = new Spec<T>();
-    spec.currentColumn = column;
-    return spec;
+    return new Spec<>(List.of(), column, this.repository, this.dialect);
   }
 
-  Spec<T> whereInstance(String column) {
-    Objects.requireNonNull(column, "column");
-    this.currentColumn = column;
-    return this;
-  }
-
+  @Override
   public Spec<T> and(String column) {
     Objects.requireNonNull(column, "column");
     flushColumn();
-    fragments.add(new Junction("AND"));
-    this.currentColumn = column;
-    return this;
+    return withFragment(new Junction("AND"), column);
   }
 
+  @Override
   public Spec<T> or(String column) {
     Objects.requireNonNull(column, "column");
     flushColumn();
-    fragments.add(new Junction("OR"));
-    this.currentColumn = column;
-    return this;
+    return withFragment(new Junction("OR"), column);
   }
 
+  @Override
   public Spec<T> eq(Object value) {
     return addOp("=", value);
   }
 
+  @Override
   public Spec<T> notEq(Object value) {
     return addOp("<>", value);
   }
 
+  @Override
   public Spec<T> greaterThan(Object value) {
     return addOp(">", value);
   }
 
+  @Override
   public Spec<T> lessThan(Object value) {
     return addOp("<", value);
   }
 
+  @Override
   public Spec<T> greaterOrEqual(Object value) {
     return addOp(">=", value);
   }
 
+  @Override
   public Spec<T> lessOrEqual(Object value) {
     return addOp("<=", value);
   }
 
+  @Override
   public Spec<T> like(Object value) {
     return addOp("LIKE", value);
   }
 
+  @Override
   public Spec<T> isNull() {
     requireColumn();
-    fragments.add(new NullCondition(currentColumn, true));
-    currentColumn = null;
-    return this;
+    return withFragment(new NullCondition(currentColumn, true), null);
   }
 
+  @Override
   public Spec<T> isNotNull() {
     requireColumn();
-    fragments.add(new NullCondition(currentColumn, false));
-    currentColumn = null;
-    return this;
+    return withFragment(new NullCondition(currentColumn, false), null);
   }
 
+  @Override
   public Spec<T> in(Object... values) {
     requireColumn();
-    fragments.add(new InCondition(currentColumn, List.of(values)));
-    currentColumn = null;
-    return this;
+    return withFragment(new InCondition(currentColumn, List.of(values)), null);
   }
 
+  @Override
   public Spec<T> in(Collection<?> values) {
     requireColumn();
-    fragments.add(new InCondition(currentColumn, List.copyOf(values)));
-    currentColumn = null;
-    return this;
+    return withFragment(new InCondition(currentColumn, List.copyOf(values)), null);
   }
 
+  @Override
   public Spec<T> orderBy(String column, String direction) {
     flushColumn();
     var dir = "DESC".equalsIgnoreCase(direction) ? "DESC" : "ASC";
-    fragments.add(new OrderByClause(column, dir));
-    return this;
+    return withFragment(new OrderByClause(column, dir), null);
   }
 
+  @Override
   public Spec<T> limit(int limit) {
     flushColumn();
-    fragments.add(new LimitClause(limit));
-    return this;
+    return withFragment(new LimitClause(limit), null);
   }
 
+  @Override
   public Spec<T> offset(int offset) {
     flushColumn();
-    fragments.add(new OffsetClause(offset));
-    return this;
+    return withFragment(new OffsetClause(offset), null);
   }
 
-  private Spec<T> addOp(String operator, Object value) {
-    requireColumn();
-    fragments.add(new ColumnCondition(currentColumn, operator, value));
-    currentColumn = null;
-    return this;
+  // -- Terminal operations --
+
+  @Override
+  public List<T> list() {
+    var sql = toSql();
+    var params = getParameters();
+    return this.repository.findByQuery(sql, params.toArray());
   }
 
-  private void flushColumn() {
-    if (currentColumn != null) {
-      throw new IllegalStateException(
-          "Column '" + currentColumn + "' has no operator. Call eq(), notEq(), isNull(), etc.");
-    }
+  @Override
+  public CompletableFuture<List<T>> listAsync() {
+    var sql = toSql();
+    var params = getParameters();
+    return this.repository.findByQueryAsync(sql, params.toArray());
   }
 
-  private void requireColumn() {
-    if (currentColumn == null) {
-      throw new IllegalStateException("No active column. Call where(), and(), or or() first.");
-    }
+  @Override
+  public Optional<T> uniqueResult() {
+    var result = limit(1).list();
+    return result.isEmpty() ? Optional.empty() : Optional.of(result.getFirst());
   }
+
+  @Override
+  public CompletableFuture<Optional<T>> uniqueResultAsync() {
+    return limit(1)
+        .listAsync()
+        .thenApply(result -> result.isEmpty() ? Optional.empty() : Optional.of(result.getFirst()));
+  }
+
+  @Override
+  public long count() {
+    var sql = toSql();
+    var params = getParameters();
+    return this.repository.countByQuery(sql, params.toArray());
+  }
+
+  @Override
+  public CompletableFuture<Long> countAsync() {
+    var sql = toSql();
+    var params = getParameters();
+    return this.repository.countByQueryAsync(sql, params.toArray());
+  }
+
+  // -- Specification interface --
 
   @Override
   public String toSql(SqlDialect dialect) {
@@ -162,7 +219,7 @@ public final class Spec<T> implements Specification<T> {
       switch (f) {
         case ColumnCondition(var col, var op, var val) -> {
           if (!sb.isEmpty()) sb.append(' ');
-          sb.append(String.format("%s %s ?", dialect.quoteIdentifier(col), op));
+          sb.append(dialect.quoteIdentifier(col)).append(' ').append(op).append(" ?");
         }
         case Junction(var kw) -> sb.append(' ').append(kw);
         case NullCondition(var col, var isNull) -> {
@@ -180,12 +237,16 @@ public final class Spec<T> implements Specification<T> {
           sb.append(')');
         }
         case OrderByClause(var col, var dir) ->
-            sb.append(String.format(" ORDER BY %s %s", dialect.quoteIdentifier(col), dir));
-        case LimitClause(var lim) -> sb.append(String.format(" LIMIT %d", lim));
-        case OffsetClause(var off) -> sb.append(String.format(" OFFSET %d", off));
+            sb.append(" ORDER BY ").append(dialect.quoteIdentifier(col)).append(' ').append(dir);
+        case LimitClause(var lim) -> sb.append(" LIMIT ").append(lim);
+        case OffsetClause(var off) -> sb.append(" OFFSET ").append(off);
       }
     }
     return sb.toString();
+  }
+
+  private String toSql() {
+    return toSql(this.dialect);
   }
 
   @Override
@@ -205,6 +266,45 @@ public final class Spec<T> implements Specification<T> {
     }
     return result;
   }
+
+  // -- Internal helpers --
+
+  private Spec<T> addOp(String operator, Object value) {
+    requireColumn();
+    return withFragment(new ColumnCondition(currentColumn, operator, value), null);
+  }
+
+  private void flushColumn() {
+    if (currentColumn != null) {
+      throw new IllegalStateException(
+          "Column '" + currentColumn + "' has no operator. Call eq(), notEq(), isNull(), etc.");
+    }
+  }
+
+  private void requireColumn() {
+    if (currentColumn == null) {
+      throw new IllegalStateException("No active column. Call where(), and(), or or() first.");
+    }
+  }
+
+  // -- Override Specification defaults to return Spec instead of anonymous Specification --
+
+  @Override
+  public Specification<T> and(Specification<T> other) {
+    return new AndSpecification<>(this, other);
+  }
+
+  @Override
+  public Specification<T> or(Specification<T> other) {
+    return new OrSpecification<>(this, other);
+  }
+
+  @Override
+  public Specification<T> not() {
+    return new NotSpecification<>(this);
+  }
+
+  // -- Fragment types --
 
   private sealed interface Fragment {}
 

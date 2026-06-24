@@ -3,6 +3,7 @@ package com.github.paperorm.schema;
 import com.github.paperorm.database.DatabaseConnection;
 import com.github.paperorm.dialect.SqlDialect;
 import com.github.paperorm.exception.OrmException;
+import com.github.paperorm.mapping.ColumnMetadata;
 import com.github.paperorm.mapping.EntityMetadata;
 import java.sql.DatabaseMetaData;
 import java.sql.SQLException;
@@ -24,22 +25,24 @@ public final class SchemaManager {
 
   private void createIndexes(EntityMetadata metadata) {
     var tableName = metadata.tableName();
+
     for (var column : metadata.columns()) {
-      if (column.indexed()) {
-        var indexName = column.indexName();
-        if (indexName == null || indexName.isBlank()) {
-          indexName = "idx_" + tableName + "_" + column.columnName();
-        }
-        var createIndexSql =
-            "CREATE INDEX IF NOT EXISTS "
-                + this.dialect.quoteIdentifier(indexName)
-                + " ON "
-                + this.dialect.quoteIdentifier(tableName)
-                + " ("
-                + this.dialect.quoteIdentifier(column.columnName())
-                + ")";
-        execute(createIndexSql);
+      if (!column.indexed()) {
+        continue;
       }
+
+      var indexName = column.indexName();
+      if (indexName == null || indexName.isBlank()) {
+        indexName = "idx_" + tableName + "_" + column.columnName();
+      }
+
+      var createIndexSql =
+          "CREATE INDEX IF NOT EXISTS %s ON %s (%s)"
+              .formatted(
+                  this.dialect.quoteIdentifier(indexName),
+                  this.dialect.quoteIdentifier(tableName),
+                  this.dialect.quoteIdentifier(column.columnName()));
+      execute(createIndexSql);
     }
   }
 
@@ -53,20 +56,24 @@ public final class SchemaManager {
 
     for (var column : metadata.columns()) {
       var columnName = column.columnName().toLowerCase();
-
-      if (!existingColumns.contains(columnName)) {
-        var alterSql = this.dialect.addColumn(tableName, column);
-        try {
-          execute(alterSql);
-        } catch (OrmException exception) {
-          if (column.nullable() || !column.autoIncrement()) {
-            throw exception;
-          }
-          var fallbackSql = this.dialect.addColumn(tableName, column);
-          fallbackSql = fallbackSql.replace(" NOT NULL", "");
-          execute(fallbackSql);
-        }
+      if (existingColumns.contains(columnName)) {
+        continue;
       }
+
+      migrateColumn(tableName, column);
+    }
+  }
+
+  private void migrateColumn(String tableName, ColumnMetadata column) {
+    var alterSql = this.dialect.addColumn(tableName, column);
+    try {
+      execute(alterSql);
+    } catch (OrmException exception) {
+      if (column.nullable() || !column.autoIncrement()) {
+        throw exception;
+      }
+      var fallbackSql = alterSql.replace(" NOT NULL", "");
+      execute(fallbackSql);
     }
   }
 
@@ -77,11 +84,6 @@ public final class SchemaManager {
       var dbMeta = conn.getMetaData();
 
       tryLoadColumns(dbMeta, tableName, columns);
-
-      if (columns.isEmpty()) {
-        tryLoadColumns(dbMeta, tableName.toUpperCase(), columns);
-      }
-
       if (columns.isEmpty()) {
         tryLoadColumns(dbMeta, tableName.toLowerCase(), columns);
       }
@@ -97,7 +99,6 @@ public final class SchemaManager {
     try (var rs = dbMeta.getColumns(null, null, tableName, null)) {
       while (rs.next()) {
         var colName = rs.getString("COLUMN_NAME");
-
         if (colName != null) {
           target.add(colName.toLowerCase());
         }

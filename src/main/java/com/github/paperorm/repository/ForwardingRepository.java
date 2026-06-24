@@ -5,7 +5,6 @@ import com.github.paperorm.repository.query.Specification;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 
 public class ForwardingRepository<T> implements Repository<T> {
 
@@ -71,58 +70,8 @@ public class ForwardingRepository<T> implements Repository<T> {
   }
 
   @Override
-  public CompletableFuture<Void> ensureTableAsync() {
-    return delegate.ensureTableAsync();
-  }
-
-  @Override
-  public CompletableFuture<Void> saveAsync(T entity) {
-    return delegate.saveAsync(entity);
-  }
-
-  @Override
-  public CompletableFuture<Void> saveAllAsync(Iterable<T> entities) {
-    return delegate.saveAllAsync(entities);
-  }
-
-  @Override
-  public CompletableFuture<Void> updateAsync(T entity) {
-    return delegate.updateAsync(entity);
-  }
-
-  @Override
-  public CompletableFuture<Void> updateAllAsync(Iterable<T> entities) {
-    return delegate.updateAllAsync(entities);
-  }
-
-  @Override
-  public CompletableFuture<Void> deleteAsync(T entity) {
-    return delegate.deleteAsync(entity);
-  }
-
-  @Override
-  public CompletableFuture<Void> deleteByIdAsync(Object id) {
-    return delegate.deleteByIdAsync(id);
-  }
-
-  @Override
-  public CompletableFuture<Optional<T>> findByIdAsync(Object id) {
-    return delegate.findByIdAsync(id);
-  }
-
-  @Override
-  public CompletableFuture<List<T>> findAllAsync() {
-    return delegate.findAllAsync();
-  }
-
-  @Override
-  public CompletableFuture<List<T>> findByAsync(String column, Object value) {
-    return delegate.findByAsync(column, value);
-  }
-
-  @Override
-  public CompletableFuture<Boolean> existsByIdAsync(Object id) {
-    return delegate.existsByIdAsync(id);
+  public java.util.concurrent.Executor getExecutor() {
+    return delegate.getExecutor();
   }
 
   @Override
@@ -131,18 +80,8 @@ public class ForwardingRepository<T> implements Repository<T> {
   }
 
   @Override
-  public CompletableFuture<List<T>> findByQueryAsync(String whereClause, Object... parameters) {
-    return delegate.findByQueryAsync(whereClause, parameters);
-  }
-
-  @Override
   public long countByQuery(String whereClause, Object... parameters) {
     return delegate.countByQuery(whereClause, parameters);
-  }
-
-  @Override
-  public CompletableFuture<Long> countByQueryAsync(String whereClause, Object... parameters) {
-    return delegate.countByQueryAsync(whereClause, parameters);
   }
 
   @Override
@@ -153,11 +92,6 @@ public class ForwardingRepository<T> implements Repository<T> {
   @Override
   public List<T> find(Specification<T> spec) {
     return delegate.find(spec);
-  }
-
-  @Override
-  public CompletableFuture<List<T>> findAsync(Specification<T> spec) {
-    return delegate.findAsync(spec);
   }
 
   @Override

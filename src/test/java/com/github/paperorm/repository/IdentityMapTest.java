@@ -2,10 +2,16 @@ package com.github.paperorm.repository;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.github.paperorm.OrmContext;
+import com.github.paperorm.OrmFactory;
 import com.github.paperorm.OrmSession;
 import com.github.paperorm.annotation.Entity;
 import com.github.paperorm.annotation.Id;
 import com.github.paperorm.database.SqliteDatabaseConnection;
+import com.github.paperorm.dialect.SqliteDialect;
+import com.github.paperorm.mapping.IdResolver;
+import com.github.paperorm.mapping.ReflectionEntityScanner;
+import com.github.paperorm.mapping.TypeMapper;
 import java.nio.file.Path;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,7 +28,22 @@ class IdentityMapTest {
   @BeforeEach
   void setUp() {
     connection = new SqliteDatabaseConnection(tempDir.resolve("test.db"));
-    session = new OrmSession(connection, null, true);
+    var typeMapper = new TypeMapper();
+    var scanner = new ReflectionEntityScanner(typeMapper);
+    var dialect = new SqliteDialect();
+    var context =
+        new OrmContext(
+            connection,
+            scanner,
+            dialect,
+            typeMapper,
+            new IdResolver(),
+            Runnable::run,
+            true,
+            false,
+            null);
+    var factory = new OrmFactory(context);
+    session = new OrmSession(context, factory);
   }
 
   @AfterEach
@@ -32,7 +53,7 @@ class IdentityMapTest {
 
   @Test
   void shouldCacheEntityWhenEnabled() {
-    var map = new IdentityMap<>(session, TestItem.class, true);
+    var map = IdentityMap.sessionScoped(session, TestItem.class);
     var entity = new TestItem(42L, "Cached");
 
     var result = map.cacheOrGet(42L, entity);
@@ -44,8 +65,23 @@ class IdentityMapTest {
 
   @Test
   void shouldNotCacheWhenSessionDisabled() {
-    var disabledSession = new OrmSession(connection, null, false);
-    var map = new IdentityMap<>(disabledSession, TestItem.class, false);
+    var typeMapper = new TypeMapper();
+    var scanner = new ReflectionEntityScanner(typeMapper);
+    var dialect = new SqliteDialect();
+    var disabledContext =
+        new OrmContext(
+            connection,
+            scanner,
+            dialect,
+            typeMapper,
+            new IdResolver(),
+            Runnable::run,
+            false,
+            false,
+            null);
+    var disabledFactory = new OrmFactory(disabledContext);
+    var disabledSession = new OrmSession(disabledContext, disabledFactory);
+    var map = IdentityMap.sessionScoped(disabledSession, TestItem.class);
     var entity = new TestItem(1L, "NotCached");
 
     map.cacheOrGet(1L, entity);
@@ -55,7 +91,7 @@ class IdentityMapTest {
 
   @Test
   void shouldReturnExistingOnSecondCache() {
-    var map = new IdentityMap<>(session, TestItem.class, true);
+    var map = IdentityMap.sessionScoped(session, TestItem.class);
     var first = new TestItem(10L, "First");
     var second = new TestItem(10L, "Second");
 
@@ -68,7 +104,7 @@ class IdentityMapTest {
 
   @Test
   void shouldEvictEntity() {
-    var map = new IdentityMap<>(session, TestItem.class, true);
+    var map = IdentityMap.sessionScoped(session, TestItem.class);
     var entity = new TestItem(7L, "EvictMe");
 
     map.register(7L, entity);
@@ -80,7 +116,7 @@ class IdentityMapTest {
 
   @Test
   void shouldClearAll() {
-    var map = new IdentityMap<>(session, TestItem.class, true);
+    var map = IdentityMap.sessionScoped(session, TestItem.class);
     map.register(1L, new TestItem(1L, "A"));
     map.register(2L, new TestItem(2L, "B"));
 
@@ -91,7 +127,7 @@ class IdentityMapTest {
 
   @Test
   void shouldWorkWithoutSession() {
-    var map = new IdentityMap<>(null, TestItem.class, true);
+    var map = IdentityMap.local(TestItem.class, true);
     var entity = new TestItem(99L, "Local");
 
     map.register(99L, entity);
@@ -101,13 +137,13 @@ class IdentityMapTest {
 
   @Test
   void shouldResolveNullForUnknownId() {
-    var map = new IdentityMap<>(session, TestItem.class, true);
+    var map = IdentityMap.sessionScoped(session, TestItem.class);
     assertNull(map.resolve(999L));
   }
 
   @Test
   void shouldCacheOrGetWithCacheDisabledWhenNoSession() {
-    var map = new IdentityMap<>(null, TestItem.class, false);
+    var map = IdentityMap.local(TestItem.class, false);
     var entity = new TestItem(3L, "Disabled");
 
     var result = map.cacheOrGet(3L, entity);
@@ -116,13 +152,9 @@ class IdentityMapTest {
   }
 
   @Entity
+  @lombok.AllArgsConstructor
   private static final class TestItem {
     @Id private Long id;
     private String name;
-
-    TestItem(Long id, String name) {
-      this.id = id;
-      this.name = name;
-    }
   }
 }

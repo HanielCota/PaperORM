@@ -22,6 +22,8 @@ public interface SqlDialect {
 
   String selectAllWithCondition(EntityMetadata metadata, String whereClause);
 
+  String countWithCondition(EntityMetadata metadata, String whereClause);
+
   default String selectAllWithCondition(
       EntityMetadata metadata, String whereClause, String baseSql) {
     return appendWhereClause(baseSql, whereClause);
@@ -35,7 +37,7 @@ public interface SqlDialect {
 
   String createMigrationTable();
 
-  private static String appendWhereClause(String baseSql, String whereClause) {
+  private String appendWhereClause(String baseSql, String whereClause) {
     if (whereClause == null) {
       return baseSql;
     }

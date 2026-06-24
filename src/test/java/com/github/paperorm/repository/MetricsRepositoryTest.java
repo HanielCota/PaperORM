@@ -3,12 +3,14 @@ package com.github.paperorm.repository;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.github.paperorm.OrmContext;
 import com.github.paperorm.annotation.Column;
 import com.github.paperorm.annotation.Entity;
 import com.github.paperorm.annotation.Id;
 import com.github.paperorm.annotation.Table;
 import com.github.paperorm.database.SqliteDatabaseConnection;
 import com.github.paperorm.dialect.SqliteDialect;
+import com.github.paperorm.mapping.IdResolver;
 import com.github.paperorm.mapping.ReflectionEntityScanner;
 import com.github.paperorm.mapping.TypeMapper;
 import com.github.paperorm.repository.query.Spec;
@@ -28,11 +30,21 @@ class MetricsRepositoryTest {
   @BeforeEach
   void setUp() {
     connection = new SqliteDatabaseConnection(tempDir.resolve("test.db"));
-    var scanner = new ReflectionEntityScanner();
-    var dialect = new SqliteDialect();
     var typeMapper = new TypeMapper();
-    var inner =
-        new SqlRepository<>(MetricTestEntity.class, connection, scanner, dialect, typeMapper);
+    var scanner = new ReflectionEntityScanner(typeMapper);
+    var dialect = new SqliteDialect();
+    var ctx =
+        new OrmContext(
+            connection,
+            scanner,
+            dialect,
+            typeMapper,
+            new IdResolver(),
+            Runnable::run,
+            true,
+            false,
+            null);
+    var inner = new SqlRepository<>(MetricTestEntity.class, ctx);
     repo = new MetricsRepository<>(inner);
     repo.ensureTable();
   }
@@ -131,7 +143,7 @@ class MetricsRepositoryTest {
   void shouldCountSpecAndQuery() {
     repo.save(new MetricTestEntity(12L, "Spec"));
 
-    var spec = Spec.<MetricTestEntity>where("name").eq("Spec");
+    var spec = Spec.<MetricTestEntity>of("name").eq("Spec");
     repo.find(spec);
     repo.findByQuery("name = ?", "Spec");
 
@@ -140,16 +152,11 @@ class MetricsRepositoryTest {
 
   @Entity
   @Table(name = "metric_test_entities")
+  @lombok.NoArgsConstructor
+  @lombok.AllArgsConstructor
   static class MetricTestEntity {
     @Id Long id;
 
     @Column String name;
-
-    MetricTestEntity() {}
-
-    MetricTestEntity(Long id, String name) {
-      this.id = id;
-      this.name = name;
-    }
   }
 }

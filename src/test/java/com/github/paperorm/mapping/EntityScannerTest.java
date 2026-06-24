@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 
 class EntityScannerTest {
 
-  private final EntityScanner scanner = new ReflectionEntityScanner();
+  private final EntityScanner scanner = new ReflectionEntityScanner(new TypeMapper());
 
   @Test
   void scanEntityExtractsMetadata() {
@@ -74,6 +74,4 @@ class XmlParserEntity {
   @Column private String getURL;
 
   @Column private String normalField;
-
-  XmlParserEntity() {}
 }

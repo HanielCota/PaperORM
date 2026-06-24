@@ -100,38 +100,63 @@ public interface Repository<T> {
    */
   boolean existsById(Object id);
 
+  /** Returns the executor used for async operations. */
+  java.util.concurrent.Executor getExecutor();
+
   /** Async variant of {@link #ensureTable()}. */
-  CompletableFuture<Void> ensureTableAsync();
+  default CompletableFuture<Void> ensureTableAsync() {
+    return CompletableFuture.runAsync(this::ensureTable, getExecutor());
+  }
 
   /** Async variant of {@link #save(Object)}. */
-  CompletableFuture<Void> saveAsync(T entity);
+  default CompletableFuture<Void> saveAsync(T entity) {
+    return CompletableFuture.runAsync(() -> save(entity), getExecutor());
+  }
 
   /** Async variant of {@link #saveAll(Iterable)}. */
-  CompletableFuture<Void> saveAllAsync(Iterable<T> entities);
+  default CompletableFuture<Void> saveAllAsync(Iterable<T> entities) {
+    return CompletableFuture.runAsync(() -> saveAll(entities), getExecutor());
+  }
 
   /** Async variant of {@link #update(Object)}. */
-  CompletableFuture<Void> updateAsync(T entity);
+  default CompletableFuture<Void> updateAsync(T entity) {
+    return CompletableFuture.runAsync(() -> update(entity), getExecutor());
+  }
 
   /** Async variant of {@link #updateAll(Iterable)}. */
-  CompletableFuture<Void> updateAllAsync(Iterable<T> entities);
+  default CompletableFuture<Void> updateAllAsync(Iterable<T> entities) {
+    return CompletableFuture.runAsync(() -> updateAll(entities), getExecutor());
+  }
 
   /** Async variant of {@link #delete(Object)}. */
-  CompletableFuture<Void> deleteAsync(T entity);
+  default CompletableFuture<Void> deleteAsync(T entity) {
+    return CompletableFuture.runAsync(() -> delete(entity), getExecutor());
+  }
 
   /** Async variant of {@link #deleteById(Object)}. */
-  CompletableFuture<Void> deleteByIdAsync(Object id);
+  default CompletableFuture<Void> deleteByIdAsync(Object id) {
+    return CompletableFuture.runAsync(() -> deleteById(id), getExecutor());
+  }
 
   /** Async variant of {@link #findById(Object)}. */
-  CompletableFuture<Optional<T>> findByIdAsync(Object id);
+  default CompletableFuture<Optional<T>> findByIdAsync(Object id) {
+    return CompletableFuture.supplyAsync(() -> findById(id), getExecutor());
+  }
 
   /** Async variant of {@link #findAll()}. */
-  CompletableFuture<List<T>> findAllAsync();
+  default CompletableFuture<List<T>> findAllAsync() {
+    return CompletableFuture.supplyAsync(this::findAll, getExecutor());
+  }
 
   /** Async variant of {@link #findBy(String, Object)}. */
-  CompletableFuture<List<T>> findByAsync(String column, Object value);
+  default CompletableFuture<List<T>> findByAsync(String column, Object value) {
+    return CompletableFuture.supplyAsync(() -> findBy(column, value), getExecutor());
+  }
 
   /** Async variant of {@link #existsById(Object)}. */
-  CompletableFuture<Boolean> existsByIdAsync(Object id);
+  default CompletableFuture<Boolean> existsByIdAsync(Object id) {
+    return CompletableFuture.supplyAsync(() -> existsById(id), getExecutor());
+  }
 
   /**
    * Executes a raw SQL WHERE clause against the entity table. Parameters are bound positionally
@@ -148,7 +173,9 @@ public interface Repository<T> {
   List<T> findByQuery(String whereClause, Object... parameters);
 
   /** Async variant of {@link #findByQuery(String, Object...)}. */
-  CompletableFuture<List<T>> findByQueryAsync(String whereClause, Object... parameters);
+  default CompletableFuture<List<T>> findByQueryAsync(String whereClause, Object... parameters) {
+    return CompletableFuture.supplyAsync(() -> findByQuery(whereClause, parameters), getExecutor());
+  }
 
   /**
    * Counts entities matching a raw SQL WHERE clause.
@@ -160,7 +187,10 @@ public interface Repository<T> {
   long countByQuery(String whereClause, Object... parameters);
 
   /** Async variant of {@link #countByQuery(String, Object...)}. */
-  CompletableFuture<Long> countByQueryAsync(String whereClause, Object... parameters);
+  default CompletableFuture<Long> countByQueryAsync(String whereClause, Object... parameters) {
+    return CompletableFuture.supplyAsync(
+        () -> countByQuery(whereClause, parameters), getExecutor());
+  }
 
   /** Clears the identity-map cache, forcing subsequent reads to fetch from the database. */
   void clearCache();
@@ -181,5 +211,7 @@ public interface Repository<T> {
   List<T> find(Specification<T> spec);
 
   /** Async variant of {@link #find(Specification)}. */
-  CompletableFuture<List<T>> findAsync(Specification<T> spec);
+  default CompletableFuture<List<T>> findAsync(Specification<T> spec) {
+    return CompletableFuture.supplyAsync(() -> find(spec), getExecutor());
+  }
 }

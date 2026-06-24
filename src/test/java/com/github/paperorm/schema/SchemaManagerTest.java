@@ -10,6 +10,7 @@ import com.github.paperorm.database.SqliteDatabaseConnection;
 import com.github.paperorm.dialect.SqlDialect;
 import com.github.paperorm.dialect.SqliteDialect;
 import com.github.paperorm.mapping.ReflectionEntityScanner;
+import com.github.paperorm.mapping.TypeMapper;
 import java.nio.file.Path;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,7 +39,7 @@ class SchemaManagerTest {
 
   @Test
   void shouldCreateTable() throws Exception {
-    var metadata = new ReflectionEntityScanner().scan(TestTable.class);
+    var metadata = new ReflectionEntityScanner(new TypeMapper()).scan(TestTable.class);
     schemaManager.ensureTable(metadata);
 
     assertTrue(tableExists("test_table"));
@@ -51,7 +52,7 @@ class SchemaManagerTest {
 
   @Test
   void shouldBeIdempotent() throws Exception {
-    var metadata = new ReflectionEntityScanner().scan(TestTable.class);
+    var metadata = new ReflectionEntityScanner(new TypeMapper()).scan(TestTable.class);
     schemaManager.ensureTable(metadata);
     schemaManager.ensureTable(metadata);
 
@@ -60,7 +61,7 @@ class SchemaManagerTest {
 
   @Test
   void shouldAddMissingColumns() throws Exception {
-    var metadata = new ReflectionEntityScanner().scan(TestTable.class);
+    var metadata = new ReflectionEntityScanner(new TypeMapper()).scan(TestTable.class);
     schemaManager.ensureTable(metadata);
 
     assertTrue(columnExists("test_table", "label"));
@@ -73,7 +74,7 @@ class SchemaManagerTest {
 
   @Test
   void shouldCreateIndexes() throws Exception {
-    var metadata = new ReflectionEntityScanner().scan(IndexedTable.class);
+    var metadata = new ReflectionEntityScanner(new TypeMapper()).scan(IndexedTable.class);
     schemaManager.ensureTable(metadata);
 
     assertTrue(indexExists("idx_indexed_table_name"));
@@ -81,7 +82,7 @@ class SchemaManagerTest {
 
   @Test
   void shouldCreateCustomNamedIndex() throws Exception {
-    var metadata = new ReflectionEntityScanner().scan(CustomIndexTable.class);
+    var metadata = new ReflectionEntityScanner(new TypeMapper()).scan(CustomIndexTable.class);
     schemaManager.ensureTable(metadata);
 
     assertTrue(indexExists("my_custom_index"));

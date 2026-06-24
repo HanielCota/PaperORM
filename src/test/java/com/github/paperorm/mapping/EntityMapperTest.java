@@ -37,8 +37,8 @@ class EntityMapperTest {
 
   @Test
   void shouldMapRowToEntity() throws Exception {
-    var mapper = new EntityMapper<>(SimpleEntity.class, typeMapper);
-    var scanner = new ReflectionEntityScanner();
+    var mapper = new EntityMapper<>(SimpleEntity.class, typeMapper, new IdResolver());
+    var scanner = new ReflectionEntityScanner(typeMapper);
     var metadata = scanner.scan(SimpleEntity.class);
 
     connection.execute(
@@ -64,8 +64,8 @@ class EntityMapperTest {
 
   @Test
   void shouldReadFieldValue() {
-    var mapper = new EntityMapper<>(SimpleEntity.class, typeMapper);
-    var scanner = new ReflectionEntityScanner();
+    var mapper = new EntityMapper<>(SimpleEntity.class, typeMapper, new IdResolver());
+    var scanner = new ReflectionEntityScanner(typeMapper);
     var metadata = scanner.scan(SimpleEntity.class);
 
     var entity = new SimpleEntity();
@@ -85,8 +85,8 @@ class EntityMapperTest {
 
   @Test
   void shouldWriteFieldValue() {
-    var mapper = new EntityMapper<>(SimpleEntity.class, typeMapper);
-    var scanner = new ReflectionEntityScanner();
+    var mapper = new EntityMapper<>(SimpleEntity.class, typeMapper, new IdResolver());
+    var scanner = new ReflectionEntityScanner(typeMapper);
     var metadata = scanner.scan(SimpleEntity.class);
 
     var entity = new SimpleEntity();
@@ -102,8 +102,8 @@ class EntityMapperTest {
 
   @Test
   void shouldSetGeneratedId() {
-    var mapper = new EntityMapper<>(SimpleEntity.class, typeMapper);
-    var scanner = new ReflectionEntityScanner();
+    var mapper = new EntityMapper<>(SimpleEntity.class, typeMapper, new IdResolver());
+    var scanner = new ReflectionEntityScanner(typeMapper);
     var metadata = scanner.scan(SimpleEntity.class);
 
     var entity = new SimpleEntity();
@@ -116,13 +116,13 @@ class EntityMapperTest {
   void shouldRejectClassWithoutNoArgConstructor() {
     assertThrows(
         com.github.paperorm.exception.MappingException.class,
-        () -> new EntityMapper<>(BadEntity.class, typeMapper));
+        () -> new EntityMapper<>(BadEntity.class, typeMapper, new IdResolver()));
   }
 
   @Test
   void shouldReadManyToOneFieldAsReferencedId() {
-    var mapper = new EntityMapper<>(ParentEntity.class, typeMapper);
-    var scanner = new ReflectionEntityScanner();
+    var mapper = new EntityMapper<>(ParentEntity.class, typeMapper, new IdResolver());
+    var scanner = new ReflectionEntityScanner(typeMapper);
     var metadata = scanner.scan(ParentEntity.class);
 
     var child = new ChildEntity();
@@ -139,8 +139,8 @@ class EntityMapperTest {
 
   @Test
   void shouldWriteManyToOneShell() {
-    var mapper = new EntityMapper<>(ParentEntity.class, typeMapper);
-    var scanner = new ReflectionEntityScanner();
+    var mapper = new EntityMapper<>(ParentEntity.class, typeMapper, new IdResolver());
+    var scanner = new ReflectionEntityScanner(typeMapper);
     var metadata = scanner.scan(ParentEntity.class);
 
     var parent = new ParentEntity();
@@ -155,8 +155,8 @@ class EntityMapperTest {
 
   @Test
   void shouldWriteManyToOneNull() {
-    var mapper = new EntityMapper<>(ParentEntity.class, typeMapper);
-    var scanner = new ReflectionEntityScanner();
+    var mapper = new EntityMapper<>(ParentEntity.class, typeMapper, new IdResolver());
+    var scanner = new ReflectionEntityScanner(typeMapper);
     var metadata = scanner.scan(ParentEntity.class);
 
     var parent = new ParentEntity();
