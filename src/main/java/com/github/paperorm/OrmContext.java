@@ -5,6 +5,7 @@ import com.github.paperorm.dialect.SqlDialect;
 import com.github.paperorm.mapping.EntityScanner;
 import com.github.paperorm.mapping.IdResolver;
 import com.github.paperorm.mapping.TypeMapper;
+import com.github.paperorm.repository.RepositoryContext;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
@@ -17,4 +18,5 @@ public record OrmContext(
     Executor executor,
     boolean useCache,
     boolean ownsExecutor,
-    CompletableFuture<Void> migrationsFuture) {}
+    CompletableFuture<Void> migrationsFuture)
+    implements RepositoryContext {}

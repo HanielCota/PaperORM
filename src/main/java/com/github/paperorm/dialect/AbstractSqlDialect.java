@@ -85,6 +85,11 @@ public abstract class AbstractSqlDialect implements SqlDialect {
             setClause.add(quoteIdentifier(column.columnName()) + " = ?");
           }
 
+          if (setClause.length() == 0) {
+            throw new IllegalArgumentException(
+                "Cannot generate UPDATE statement for entity without updatable columns");
+          }
+
           return "UPDATE %s SET %s WHERE %s = ?"
               .formatted(
                   quoteIdentifier(m.tableName()),

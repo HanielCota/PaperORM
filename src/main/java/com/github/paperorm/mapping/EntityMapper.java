@@ -89,7 +89,9 @@ public final class EntityMapper<T> {
 
   private void coerceAndSet(Field field, Object target, Object value) {
     if (value == null) {
-      setField(field, target, null);
+      if (!field.getType().isPrimitive()) {
+        setField(field, target, null);
+      }
       return;
     }
 
@@ -137,6 +139,12 @@ public final class EntityMapper<T> {
     }
     if (targetType == Byte.class || targetType == byte.class) {
       return num.byteValue();
+    }
+    if (targetType == Float.class || targetType == float.class) {
+      return num.floatValue();
+    }
+    if (targetType == Double.class || targetType == double.class) {
+      return num.doubleValue();
     }
     return null;
   }

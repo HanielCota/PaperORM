@@ -79,11 +79,17 @@ public final class Spec<T> implements Specification<T>, Query<T> {
 
   @Override
   public Spec<T> eq(Object value) {
+    if (value == null) {
+      return isNull();
+    }
     return addOp("=", value);
   }
 
   @Override
   public Spec<T> notEq(Object value) {
+    if (value == null) {
+      return isNotNull();
+    }
     return addOp("<>", value);
   }
 
@@ -127,12 +133,18 @@ public final class Spec<T> implements Specification<T>, Query<T> {
   @Override
   public Spec<T> in(Object... values) {
     requireColumn();
+    if (values == null || values.length == 0) {
+      throw new IllegalArgumentException("IN clause values cannot be null or empty");
+    }
     return withFragment(new InCondition(currentColumn, List.of(values)), null);
   }
 
   @Override
   public Spec<T> in(Collection<?> values) {
     requireColumn();
+    if (values == null || values.isEmpty()) {
+      throw new IllegalArgumentException("IN clause values cannot be null or empty");
+    }
     return withFragment(new InCondition(currentColumn, List.copyOf(values)), null);
   }
 

@@ -132,7 +132,7 @@ class OrmSessionTest {
   }
 
   @Test
-  void shouldRunTransactionAndClearCache() {
+  void shouldRunTransactionAndManuallyClearCache() {
     var repo = session.getRepository(SessionEntity.class);
     repo.ensureTable();
     var entity = new SessionEntity(100L, "TxTest");
@@ -147,6 +147,7 @@ class OrmSessionTest {
               return null;
             });
 
+    session.clearIdentityMap();
     var found = repo.findById(100L);
     assertTrue(found.isPresent());
     assertEquals("TxUpdated", found.get().name);

@@ -1,7 +1,5 @@
 package com.github.paperorm.repository;
 
-import com.github.paperorm.OrmContext;
-import com.github.paperorm.OrmSession;
 import com.github.paperorm.database.DatabaseConnection;
 import com.github.paperorm.dialect.SqlDialect;
 import com.github.paperorm.exception.OrmException;
@@ -48,11 +46,12 @@ public final class SqlRepository<T> implements Repository<T> {
   private final String entityClassName;
   private final Set<String> columnLowerNames;
 
-  public SqlRepository(Class<T> entityClass, OrmContext context) {
+  public SqlRepository(Class<T> entityClass, RepositoryContext context) {
     this(entityClass, context, null);
   }
 
-  public SqlRepository(Class<T> entityClass, OrmContext context, OrmSession session) {
+  public SqlRepository(
+      Class<T> entityClass, RepositoryContext context, SessionCacheProvider session) {
     Objects.requireNonNull(entityClass, "entityClass");
     Objects.requireNonNull(context, "context");
     this.metadata = context.scanner().scan(entityClass);
@@ -235,11 +234,16 @@ public final class SqlRepository<T> implements Repository<T> {
               }
               bindUpdateParameters(statement, entity, idValue);
               statement.addBatch();
-              this.identityMap.register(idValue, entity);
             }
             statement.executeBatch();
           }
         });
+
+    for (var entity : entities) {
+      if (entity != null) {
+        registerInIdentityMap(entity, idColumn);
+      }
+    }
   }
 
   @Override
@@ -247,6 +251,9 @@ public final class SqlRepository<T> implements Repository<T> {
     Objects.requireNonNull(entity, ENTITY_NULL_MSG);
     this.lifecycle.firePreDelete(entity);
     var idValue = this.entityMapper.readField(this.metadata.idColumn(), entity);
+    if (idValue == null) {
+      throw new IllegalArgumentException("Cannot delete entity with null ID");
+    }
     performDelete(idValue);
     this.identityMap.evict(idValue);
   }
@@ -462,6 +469,7 @@ public final class SqlRepository<T> implements Repository<T> {
       if (keys.next()) {
         var generatedId = keys.getLong(1);
         this.entityMapper.setGeneratedId(idColumn, entity, generatedId);
+        this.identityMap.register(generatedId, entity);
       }
     }
   }

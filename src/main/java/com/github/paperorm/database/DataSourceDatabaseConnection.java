@@ -26,11 +26,23 @@ public class DataSourceDatabaseConnection implements DatabaseConnection {
     this.logger = Objects.requireNonNullElse(logger, DEFAULT_LOGGER);
   }
 
-  @Override
   public Connection openConnection() throws SQLException {
     Connection txConn = activeTransactionConnection.get();
     if (txConn != null) {
-      return txConn;
+      return (Connection)
+          java.lang.reflect.Proxy.newProxyInstance(
+              Connection.class.getClassLoader(),
+              new Class<?>[] {Connection.class},
+              (proxy, method, args) -> {
+                if ("close".equals(method.getName()) && (args == null || args.length == 0)) {
+                  return null;
+                }
+                try {
+                  return method.invoke(txConn, args);
+                } catch (java.lang.reflect.InvocationTargetException e) {
+                  throw e.getTargetException();
+                }
+              });
     }
 
     return this.dataSource.getConnection();

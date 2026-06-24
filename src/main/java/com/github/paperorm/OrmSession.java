@@ -3,6 +3,7 @@ package com.github.paperorm;
 import com.github.paperorm.database.DatabaseConnection;
 import com.github.paperorm.database.TransactionCallback;
 import com.github.paperorm.repository.Repository;
+import com.github.paperorm.repository.SessionCacheProvider;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -10,7 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 
 @RequiredArgsConstructor
-public final class OrmSession implements AutoCloseable {
+public final class OrmSession implements AutoCloseable, SessionCacheProvider {
 
   private static final String ENTITY_CLASS_NULL_MSG = "entityClass cannot be null";
 
@@ -74,11 +75,7 @@ public final class OrmSession implements AutoCloseable {
 
   public <T> T runInTransaction(TransactionCallback<T> callback) {
     Objects.requireNonNull(callback, "callback cannot be null");
-    try {
-      return this.context.connection().runInTransaction(callback);
-    } finally {
-      clearIdentityMap();
-    }
+    return this.context.connection().runInTransaction(callback);
   }
 
   public <T> CompletableFuture<T> runInTransactionAsync(TransactionCallback<T> callback) {

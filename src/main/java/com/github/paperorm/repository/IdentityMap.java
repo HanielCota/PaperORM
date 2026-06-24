@@ -1,17 +1,16 @@
 package com.github.paperorm.repository;
 
-import com.github.paperorm.OrmSession;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-public final class IdentityMap<T> {
+final class IdentityMap<T> {
 
   private final Map<Object, T> localCache;
-  private final OrmSession session;
+  private final SessionCacheProvider session;
   private final Class<T> entityClass;
   private final boolean enabled;
 
-  private IdentityMap(OrmSession session, Class<T> entityClass, boolean useCache) {
+  private IdentityMap(SessionCacheProvider session, Class<T> entityClass, boolean useCache) {
     this.session = session;
     this.entityClass = entityClass;
 
@@ -25,7 +24,8 @@ public final class IdentityMap<T> {
     this.localCache = session.getCache(entityClass);
   }
 
-  public static <T> IdentityMap<T> sessionScoped(OrmSession session, Class<T> entityClass) {
+  public static <T> IdentityMap<T> sessionScoped(
+      SessionCacheProvider session, Class<T> entityClass) {
     return new IdentityMap<>(session, entityClass, true);
   }
 
