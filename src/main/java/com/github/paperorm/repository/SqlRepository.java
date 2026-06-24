@@ -149,7 +149,7 @@ public final class SqlRepository<T> implements Repository<T> {
             for (var entity : entities) {
               bindInsertParameters(statement, entity);
               if (statement.executeUpdate() == 0) {
-                throw new OrmException(errorMsg("saveAll") + ", no rows affected");
+                throw new OrmException(errorMsg(SAVE_ALL) + ", no rows affected");
               }
               try (var keys = statement.getGeneratedKeys()) {
                 if (keys.next()) {

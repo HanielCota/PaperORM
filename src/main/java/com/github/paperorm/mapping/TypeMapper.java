@@ -73,8 +73,7 @@ public final class TypeMapper {
     registerBuiltin(long.class, PreparedStatement::setLong, ResultSet::getLong);
     registerBuiltin(double.class, PreparedStatement::setDouble, ResultSet::getDouble);
     registerBuiltin(float.class, PreparedStatement::setFloat, ResultSet::getFloat);
-    registerBuiltin(
-        boolean.class, (stmt, i, v) -> stmt.setInt(i, v ? 1 : 0), (rs, col) -> rs.getInt(col) != 0);
+    registerBuiltin(boolean.class, (stmt, i, v) -> stmt.setBoolean(i, v), ResultSet::getBoolean);
     registerBuiltin(byte[].class, PreparedStatement::setBytes, ResultSet::getBytes);
   }
 
