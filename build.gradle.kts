@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "com.github.paperorm"
-version = "1.0.0-SNAPSHOT"
+version = "1.1.0"
 
 description = "API ORM simples para plugins Paper"
 
