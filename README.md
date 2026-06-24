@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/Java-21-orange?style=for-the-badge&logo=openjdk&logoColor=white" alt="Java 21" />
   <img src="https://img.shields.io/badge/Platform-PaperSpigot-cyan?style=for-the-badge&logo=minecraft&logoColor=white" alt="PaperSpigot" />
   <img src="https://img.shields.io/badge/Build-Gradle-blue?style=for-the-badge&logo=gradle&logoColor=white" alt="Gradle" />
-  <img src="https://img.shields.io/badge/JitPack-v1.0.0-green?style=for-the-badge&logo=github" alt="JitPack v1.0.0" />
+  <img src="https://img.shields.io/badge/JitPack-v1.1.0-green?style=for-the-badge&logo=github" alt="JitPack v1.1.0" />
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License MIT" />
 </p>
 
@@ -30,7 +30,7 @@
   * `@Column(unique = true)` para integridade referencial nativa no banco.
   * Mapeamento de objetos complexos (JSON) usando conversor automático baseado em **Gson**.
 * 🔄 **Transações Assíncronas**: APIs fluidas `runInTransactionAsync` com suporte automático a rollback integrado e limpeza de cache de primeiro nível.
-* 🚀 **Eventos de Ciclo de Vida**: Callbacks embutidos via anotações (`@PrePersist`, `@PostLoad`, `@PreDelete`) que automatizam fluxos sem poluir os repositórios.
+* 🚀 **Eventos de Ciclo de Vida**: Callbacks embutidos via anotações (`@PrePersist`, `@PostLoad`, `@PreDelete`) executados na velocidade da luz via **MethodHandles** da JVM, automatizando fluxos sem poluir os repositórios.
 * 📂 **Migrações Automáticas**: Gerenciador de migrações em lote para ler e aplicar arquivos de migração SQL (`V1.sql`, `V2.sql`, etc.) direto do Classpath (pasta resources) ou do diretório do plugin.
 * 🏛️ **Repositórios Estendíveis**: Classe utilitária `AbstractRepository<T>` protegida para facilitar a codificação de repositórios customizados com regras de negócios específicas do plugin.
 * 🔌 **Integração de Logs**: Canalize os logs de depuração e conexões do ORM diretamente para o Logger do plugin Bukkit (`plugin.getLogger()`).
@@ -49,7 +49,7 @@ com.github.paperorm
 ├── OrmFactory.java             # Factory interna dos repositórios
 ├── annotation/                 # Mapeamento do banco (@Entity, @Column, @Id, @Index, @ManyToOne...)
 ├── database/                   # Pools de conexão HikariCP, transações e adaptadores
-├── dialect/                    # Definições e escape de dialetos (SQLite, MySQL)
+├── dialect/                    # Definições de DDL e DML (SchemaDialect, QueryDialect)
 ├── exception/                  # Exceções seladas (Sealed hierarchy) para integridade
 ├── mapping/                    # Metadados de reflection e conversores (TypeConverter)
 ├── migration/                  # Controle, versionamento e loaders de migração SQL
@@ -72,7 +72,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.github.HanielCota:PaperORM:v1.0.0")
+    implementation("com.github.HanielCota:PaperORM:v1.1.0")
 }
 ```
 
@@ -85,7 +85,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.HanielCota:PaperORM:v1.0.0'
+    implementation 'com.github.HanielCota:PaperORM:v1.1.0'
 }
 ```
 
@@ -102,7 +102,7 @@ dependencies {
 <dependency>
     <groupId>com.github.HanielCota</groupId>
     <artifactId>PaperORM</artifactId>
-    <version>v1.0.0</version>
+    <version>v1.1.0</version>
 </dependency>
 ```
 
