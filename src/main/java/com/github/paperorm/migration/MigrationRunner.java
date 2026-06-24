@@ -99,6 +99,7 @@ public final class MigrationRunner {
 
   private Set<Integer> loadAppliedVersions(DatabaseConnection connection) {
     var tableName = this.dialect.quoteIdentifier("paper_orm_migrations");
+    // tableName is safe: derived from a hardcoded constant, quoted by the dialect
     var sql = "SELECT version FROM " + tableName;
     var versions = new HashSet<Integer>();
 
@@ -118,6 +119,8 @@ public final class MigrationRunner {
 
   private void applyMigration(DatabaseConnection connection, Migration migration) {
     var tableName = this.dialect.quoteIdentifier("paper_orm_migrations");
+    // tableName is safe: derived from a hardcoded constant, quoted by the dialect;
+    // parameters are bound via PreparedStatement
     var insertSql = "INSERT INTO " + tableName + " (version, description) VALUES (?, ?)";
     connection.runInTransaction(
         txConnection -> {

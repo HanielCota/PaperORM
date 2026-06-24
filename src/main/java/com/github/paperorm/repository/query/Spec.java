@@ -11,6 +11,8 @@ import java.util.concurrent.CompletableFuture;
 
 public final class Spec<T> implements Specification<T>, Query<T> {
 
+  private static final String COLUMN_REQUIRED = "column";
+
   private final List<Fragment> fragments;
   private final String currentColumn;
   private final Repository<T> repository;
@@ -35,7 +37,7 @@ public final class Spec<T> implements Specification<T>, Query<T> {
   }
 
   public static <T> Spec<T> of(String column) {
-    Objects.requireNonNull(column, "column");
+    Objects.requireNonNull(column, COLUMN_REQUIRED);
     return new Spec<>(List.of(), column);
   }
 
@@ -47,43 +49,30 @@ public final class Spec<T> implements Specification<T>, Query<T> {
     return new Spec<>(List.of(), null, repository, dialect);
   }
 
-  private Spec<T> withRepository(Repository<T> repo, SqlDialect dia) {
-    return new Spec<>(this.fragments, this.currentColumn, repo, dia);
-  }
-
   private Spec<T> withFragment(Fragment fragment, String newColumn) {
     var newFragments = new ArrayList<>(this.fragments);
     newFragments.add(fragment);
     return new Spec<>(newFragments, newColumn, this.repository, this.dialect);
   }
 
-  private Spec<T> withColumn(String column) {
-    flushColumn();
-    return new Spec<>(this.fragments, column, this.repository, this.dialect);
-  }
-
-  private Spec<T> withFragments(List<Fragment> fragments) {
-    return new Spec<>(fragments, this.currentColumn, this.repository, this.dialect);
-  }
-
   // -- Query interface (fluent builders) --
 
   @Override
   public Spec<T> where(String column) {
-    Objects.requireNonNull(column, "column");
+    Objects.requireNonNull(column, COLUMN_REQUIRED);
     return new Spec<>(List.of(), column, this.repository, this.dialect);
   }
 
   @Override
   public Spec<T> and(String column) {
-    Objects.requireNonNull(column, "column");
+    Objects.requireNonNull(column, COLUMN_REQUIRED);
     flushColumn();
     return withFragment(new Junction("AND"), column);
   }
 
   @Override
   public Spec<T> or(String column) {
-    Objects.requireNonNull(column, "column");
+    Objects.requireNonNull(column, COLUMN_REQUIRED);
     flushColumn();
     return withFragment(new Junction("OR"), column);
   }
@@ -216,33 +205,40 @@ public final class Spec<T> implements Specification<T>, Query<T> {
     flushColumn();
     var sb = new StringBuilder();
     for (var f : fragments) {
-      switch (f) {
-        case ColumnCondition(var col, var op, var val) -> {
-          if (!sb.isEmpty()) sb.append(' ');
-          sb.append(dialect.quoteIdentifier(col)).append(' ').append(op).append(" ?");
-        }
-        case Junction(var kw) -> sb.append(' ').append(kw);
-        case NullCondition(var col, var isNull) -> {
-          if (!sb.isEmpty()) sb.append(' ');
-          sb.append(dialect.quoteIdentifier(col)).append(isNull ? " IS NULL" : " IS NOT NULL");
-        }
-        case InCondition(var col, var vals) -> {
-          if (!sb.isEmpty()) sb.append(' ');
-          sb.append(dialect.quoteIdentifier(col)).append(" IN (");
-          var sep = "";
-          for (var ignored : vals) {
-            sb.append(sep).append('?');
-            sep = ", ";
-          }
-          sb.append(')');
-        }
-        case OrderByClause(var col, var dir) ->
-            sb.append(" ORDER BY ").append(dialect.quoteIdentifier(col)).append(' ').append(dir);
-        case LimitClause(var lim) -> sb.append(" LIMIT ").append(lim);
-        case OffsetClause(var off) -> sb.append(" OFFSET ").append(off);
-      }
+      appendFragment(sb, f, dialect);
     }
     return sb.toString();
+  }
+
+  private void appendFragment(StringBuilder sb, Fragment f, SqlDialect dialect) {
+    switch (f) {
+      case ColumnCondition(var col, var op, var val) ->
+          appendWithSpace(sb, dialect.quoteIdentifier(col) + " " + op + " ?");
+      case Junction(var kw) -> sb.append(' ').append(kw);
+      case NullCondition(var col, var isNull) ->
+          appendWithSpace(
+              sb, dialect.quoteIdentifier(col) + (isNull ? " IS NULL" : " IS NOT NULL"));
+      case InCondition(var col, var vals) -> {
+        appendWithSpace(sb, dialect.quoteIdentifier(col) + " IN (");
+        var sep = "";
+        for (var ignored : vals) {
+          sb.append(sep).append('?');
+          sep = ", ";
+        }
+        sb.append(')');
+      }
+      case OrderByClause(var col, var dir) ->
+          sb.append(" ORDER BY ").append(dialect.quoteIdentifier(col)).append(' ').append(dir);
+      case LimitClause(var lim) -> sb.append(" LIMIT ").append(lim);
+      case OffsetClause(var off) -> sb.append(" OFFSET ").append(off);
+    }
+  }
+
+  private static void appendWithSpace(StringBuilder sb, String fragment) {
+    if (!sb.isEmpty()) {
+      sb.append(' ');
+    }
+    sb.append(fragment);
   }
 
   private String toSql() {
@@ -257,11 +253,10 @@ public final class Spec<T> implements Specification<T>, Query<T> {
       switch (f) {
         case ColumnCondition(var col, var op, Object val) -> result.add(val);
         case InCondition(var col, List<?> vals) -> result.addAll(vals);
-        case Junction ignored -> {}
-        case NullCondition ignored -> {}
-        case OrderByClause ignored -> {}
-        case LimitClause ignored -> {}
-        case OffsetClause ignored -> {}
+        default -> {
+          // Junction, NullCondition, OrderByClause, LimitClause, OffsetClause
+          // contribute no parameters
+        }
       }
     }
     return result;

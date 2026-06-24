@@ -62,51 +62,38 @@ public final class TypeMapper {
 
   public TypeMapper() {
     customConverters.putAll(ServiceLoaderCache.LOADED);
+    registerPrimitives();
+    registerWrappers();
+    registerComplexTypes();
+  }
 
+  private void registerPrimitives() {
     registerBuiltin(String.class, PreparedStatement::setString, ResultSet::getString);
-
     registerBuiltin(int.class, PreparedStatement::setInt, ResultSet::getInt);
-
-    registerBuiltin(
-        Integer.class,
-        PreparedStatement::setInt,
-        (rs, col) -> {
-          var raw = rs.getObject(col);
-          return raw == null ? null : ((Number) raw).intValue();
-        });
-
     registerBuiltin(long.class, PreparedStatement::setLong, ResultSet::getLong);
-
-    registerBuiltin(
-        Long.class,
-        PreparedStatement::setLong,
-        (rs, col) -> {
-          var raw = rs.getObject(col);
-          return raw == null ? null : ((Number) raw).longValue();
-        });
-
     registerBuiltin(double.class, PreparedStatement::setDouble, ResultSet::getDouble);
-
-    registerBuiltin(
-        Double.class,
-        PreparedStatement::setDouble,
-        (rs, col) -> {
-          var raw = rs.getObject(col);
-          return raw == null ? null : ((Number) raw).doubleValue();
-        });
-
     registerBuiltin(float.class, PreparedStatement::setFloat, ResultSet::getFloat);
-
-    registerBuiltin(
-        Float.class,
-        PreparedStatement::setFloat,
-        (rs, col) -> {
-          var raw = rs.getObject(col);
-          return raw == null ? null : ((Number) raw).floatValue();
-        });
-
     registerBuiltin(
         boolean.class, (stmt, i, v) -> stmt.setInt(i, v ? 1 : 0), (rs, col) -> rs.getInt(col) != 0);
+    registerBuiltin(byte[].class, PreparedStatement::setBytes, ResultSet::getBytes);
+  }
+
+  private void registerWrappers() {
+    registerBuiltin(
+        short.class,
+        (stmt, i, v) -> stmt.setInt(i, v.intValue()),
+        (rs, col) -> (short) rs.getInt(col));
+    registerBuiltin(
+        byte.class,
+        (stmt, i, v) -> stmt.setInt(i, v.intValue()),
+        (rs, col) -> (byte) rs.getInt(col));
+
+    registerBoxedNumeric(Integer.class, PreparedStatement::setInt, Number::intValue);
+    registerBoxedNumeric(Long.class, PreparedStatement::setLong, Number::longValue);
+    registerBoxedNumeric(Double.class, PreparedStatement::setDouble, Number::doubleValue);
+    registerBoxedNumeric(Float.class, PreparedStatement::setFloat, Number::floatValue);
+    registerBoxedNumeric(Short.class, (stmt, i, v) -> stmt.setInt(i, v), Number::shortValue);
+    registerBoxedNumeric(Byte.class, (stmt, i, v) -> stmt.setInt(i, v), Number::byteValue);
 
     registerBuiltin(
         Boolean.class,
@@ -127,35 +114,20 @@ public final class TypeMapper {
           }
           return ((Number) raw).intValue() != 0;
         });
+  }
 
+  private <T extends Number> void registerBoxedNumeric(
+      Class<T> type, ParameterSetter<T> setter, java.util.function.Function<Number, T> extractor) {
     registerBuiltin(
-        short.class,
-        (stmt, i, v) -> stmt.setInt(i, v.intValue()),
-        (rs, col) -> (short) rs.getInt(col));
-
-    registerBuiltin(
-        Short.class,
-        (stmt, i, v) -> stmt.setInt(i, v.intValue()),
+        type,
+        setter,
         (rs, col) -> {
           var raw = rs.getObject(col);
-          return raw == null ? null : ((Number) raw).shortValue();
+          return raw == null ? null : extractor.apply((Number) raw);
         });
+  }
 
-    registerBuiltin(
-        byte.class,
-        (stmt, i, v) -> stmt.setInt(i, v.intValue()),
-        (rs, col) -> (byte) rs.getInt(col));
-
-    registerBuiltin(
-        Byte.class,
-        (stmt, i, v) -> stmt.setInt(i, v.intValue()),
-        (rs, col) -> {
-          var raw = rs.getObject(col);
-          return raw == null ? null : ((Number) raw).byteValue();
-        });
-
-    registerBuiltin(byte[].class, PreparedStatement::setBytes, ResultSet::getBytes);
-
+  private void registerComplexTypes() {
     registerBuiltin(
         UUID.class,
         (stmt, i, v) -> stmt.setString(i, v.toString()),
@@ -163,7 +135,6 @@ public final class TypeMapper {
           var raw = rs.getString(col);
           return raw == null ? null : UUID.fromString(raw);
         });
-
     registerBuiltin(
         BigDecimal.class,
         (stmt, i, v) -> stmt.setString(i, v.toPlainString()),
@@ -171,7 +142,6 @@ public final class TypeMapper {
           var raw = rs.getString(col);
           return raw == null ? null : new BigDecimal(raw);
         });
-
     registerBuiltin(
         LocalDateTime.class,
         (stmt, i, v) -> stmt.setString(i, v.toString()),
@@ -179,7 +149,6 @@ public final class TypeMapper {
           var raw = rs.getString(col);
           return raw == null ? null : LocalDateTime.parse(raw);
         });
-
     registerBuiltin(
         Instant.class,
         (stmt, i, v) -> stmt.setString(i, v.toString()),
@@ -224,18 +193,19 @@ public final class TypeMapper {
     customSqlTypes.put(type, sqlType);
   }
 
+  private static final String INTEGER_SQL = "INTEGER";
   private static final Map<Class<?>, String> BUILTIN_SQL_TYPES =
       Map.ofEntries(
-          Map.entry(int.class, "INTEGER"),
-          Map.entry(Integer.class, "INTEGER"),
-          Map.entry(long.class, "INTEGER"),
-          Map.entry(Long.class, "INTEGER"),
-          Map.entry(short.class, "INTEGER"),
-          Map.entry(Short.class, "INTEGER"),
-          Map.entry(byte.class, "INTEGER"),
-          Map.entry(Byte.class, "INTEGER"),
-          Map.entry(boolean.class, "INTEGER"),
-          Map.entry(Boolean.class, "INTEGER"),
+          Map.entry(int.class, INTEGER_SQL),
+          Map.entry(Integer.class, INTEGER_SQL),
+          Map.entry(long.class, INTEGER_SQL),
+          Map.entry(Long.class, INTEGER_SQL),
+          Map.entry(short.class, INTEGER_SQL),
+          Map.entry(Short.class, INTEGER_SQL),
+          Map.entry(byte.class, INTEGER_SQL),
+          Map.entry(Byte.class, INTEGER_SQL),
+          Map.entry(boolean.class, INTEGER_SQL),
+          Map.entry(Boolean.class, INTEGER_SQL),
           Map.entry(double.class, "REAL"),
           Map.entry(Double.class, "REAL"),
           Map.entry(float.class, "REAL"),

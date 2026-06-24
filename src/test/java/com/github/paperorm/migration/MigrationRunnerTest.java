@@ -169,6 +169,7 @@ class MigrationRunnerTest {
         return rs.getInt(1);
       }
     } catch (Exception ignored) {
+      // count fails if table doesn't exist yet — return 0
     }
     return 0;
   }

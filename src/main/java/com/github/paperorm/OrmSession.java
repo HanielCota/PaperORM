@@ -12,6 +12,8 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public final class OrmSession implements AutoCloseable {
 
+  private static final String ENTITY_CLASS_NULL_MSG = "entityClass cannot be null";
+
   private final OrmContext context;
   private final OrmFactory factory;
   private final Map<Class<?>, Repository<?>> repositories = new ConcurrentHashMap<>();
@@ -27,7 +29,7 @@ public final class OrmSession implements AutoCloseable {
   }
 
   public <T> Repository<T> getRepository(Class<T> entityClass) {
-    Objects.requireNonNull(entityClass, "entityClass cannot be null");
+    Objects.requireNonNull(entityClass, ENTITY_CLASS_NULL_MSG);
     if (this.closed) {
       throw new IllegalStateException("Session is closed");
     }
@@ -43,7 +45,7 @@ public final class OrmSession implements AutoCloseable {
   }
 
   public <T> T getIdentity(Class<T> entityClass, Object id) {
-    Objects.requireNonNull(entityClass, "entityClass cannot be null");
+    Objects.requireNonNull(entityClass, ENTITY_CLASS_NULL_MSG);
     var cache = this.cacheMap.get(entityClass);
     if (cache == null) {
       return null;
@@ -57,7 +59,7 @@ public final class OrmSession implements AutoCloseable {
   }
 
   public void evictIdentity(Class<?> entityClass, Object id) {
-    Objects.requireNonNull(entityClass, "entityClass cannot be null");
+    Objects.requireNonNull(entityClass, ENTITY_CLASS_NULL_MSG);
     var cache = this.cacheMap.get(entityClass);
     if (cache == null) {
       return;

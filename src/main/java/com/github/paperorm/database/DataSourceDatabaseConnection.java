@@ -89,6 +89,7 @@ public class DataSourceDatabaseConnection implements DatabaseConnection {
         try {
           connection.setAutoCommit(true);
         } catch (SQLException ignored) {
+          // auto-commit restore is best-effort; connection is being returned to pool
         }
       }
     }

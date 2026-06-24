@@ -370,7 +370,9 @@ class TypeMapperTest {
 
           @Override
           public void setParameter(
-              java.sql.PreparedStatement statement, int index, CustomType value) {}
+              java.sql.PreparedStatement statement, int index, CustomType value) {
+            // not needed for this test — only getSqlType() is exercised
+          }
 
           @Override
           public CustomType readValue(java.sql.ResultSet resultSet, String columnName) {
@@ -518,7 +520,9 @@ class TypeMapperTest {
 
           @Override
           public void setParameter(java.sql.PreparedStatement statement, int index, String value)
-              throws SQLException {}
+              throws SQLException {
+            // not needed for this test — only readValue() is exercised
+          }
 
           @Override
           public String readValue(java.sql.ResultSet resultSet, String columnName)

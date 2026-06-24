@@ -95,20 +95,9 @@ public final class EntityMapper<T> {
 
     var type = field.getType();
     if (value instanceof Number num) {
-      if (type == Integer.class || type == int.class) {
-        setField(field, target, num.intValue());
-        return;
-      }
-      if (type == Long.class || type == long.class) {
-        setField(field, target, num.longValue());
-        return;
-      }
-      if (type == Short.class || type == short.class) {
-        setField(field, target, num.shortValue());
-        return;
-      }
-      if (type == Byte.class || type == byte.class) {
-        setField(field, target, num.byteValue());
+      var coerced = coerceNumber(num, type);
+      if (coerced != null) {
+        setField(field, target, coerced);
         return;
       }
     }
@@ -134,6 +123,22 @@ public final class EntityMapper<T> {
     }
 
     setField(field, target, value);
+  }
+
+  private static Object coerceNumber(Number num, Class<?> targetType) {
+    if (targetType == Integer.class || targetType == int.class) {
+      return num.intValue();
+    }
+    if (targetType == Long.class || targetType == long.class) {
+      return num.longValue();
+    }
+    if (targetType == Short.class || targetType == short.class) {
+      return num.shortValue();
+    }
+    if (targetType == Byte.class || targetType == byte.class) {
+      return num.byteValue();
+    }
+    return null;
   }
 
   private void setField(Field field, Object target, Object value) {

@@ -48,10 +48,7 @@ public final class ReflectionEntityScanner implements EntityScanner {
         current != null && current != Object.class;
         current = current.getSuperclass()) {
       for (var field : current.getDeclaredFields()) {
-        if (!seenFields.add(field.getName())) {
-          continue;
-        }
-        if (shouldSkipField(field)) {
+        if (!seenFields.add(field.getName()) || shouldSkipField(field)) {
           continue;
         }
 

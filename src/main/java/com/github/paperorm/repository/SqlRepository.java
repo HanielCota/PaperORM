@@ -29,6 +29,10 @@ import lombok.Getter;
 
 public final class SqlRepository<T> implements Repository<T> {
 
+  private static final String ENTITY_NULL_MSG = "Entity cannot be null";
+  private static final String ID_NULL_MSG = "ID cannot be null";
+  private static final String SAVE_ALL = "saveAll";
+
   private final EntityMetadata metadata;
   private final DatabaseConnection databaseConnection;
   private final SqlDialect dialect;
@@ -83,7 +87,7 @@ public final class SqlRepository<T> implements Repository<T> {
 
   @Override
   public void save(T entity) {
-    Objects.requireNonNull(entity, "Entity cannot be null");
+    Objects.requireNonNull(entity, ENTITY_NULL_MSG);
     this.lifecycle.firePrePersist(entity);
     var idColumn = this.metadata.idColumn();
     var isAuto = idColumn.autoIncrement();
@@ -138,7 +142,7 @@ public final class SqlRepository<T> implements Repository<T> {
       List<T> entities, com.github.paperorm.mapping.ColumnMetadata idColumn) {
     awaitMigrations();
     this.sqlExecutor.executeVoid(
-        errorMsg("saveAll"),
+        errorMsg(SAVE_ALL),
         connection -> {
           var sql = this.dialect.insert(this.metadata);
           try (var statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
@@ -165,7 +169,7 @@ public final class SqlRepository<T> implements Repository<T> {
   private void saveAllBatch(List<T> entities) {
     awaitMigrations();
     this.sqlExecutor.executeVoid(
-        errorMsg("saveAll"),
+        errorMsg(SAVE_ALL),
         connection -> {
           var sql = this.dialect.insert(this.metadata);
           try (var statement = connection.prepareStatement(sql, Statement.NO_GENERATED_KEYS)) {
@@ -185,7 +189,7 @@ public final class SqlRepository<T> implements Repository<T> {
 
   @Override
   public void update(T entity) {
-    Objects.requireNonNull(entity, "Entity cannot be null");
+    Objects.requireNonNull(entity, ENTITY_NULL_MSG);
     this.lifecycle.firePreUpdate(entity);
     var idColumn = this.metadata.idColumn();
     var idValue = this.entityMapper.readField(idColumn, entity);
@@ -240,7 +244,7 @@ public final class SqlRepository<T> implements Repository<T> {
 
   @Override
   public void delete(T entity) {
-    Objects.requireNonNull(entity, "Entity cannot be null");
+    Objects.requireNonNull(entity, ENTITY_NULL_MSG);
     this.lifecycle.firePreDelete(entity);
     var idValue = this.entityMapper.readField(this.metadata.idColumn(), entity);
     performDelete(idValue);
@@ -249,7 +253,7 @@ public final class SqlRepository<T> implements Repository<T> {
 
   @Override
   public void deleteById(Object id) {
-    Objects.requireNonNull(id, "ID cannot be null");
+    Objects.requireNonNull(id, ID_NULL_MSG);
     var cached = this.identityMap.resolve(id);
     if (cached != null) {
       this.lifecycle.firePreDelete(cached);
@@ -276,7 +280,7 @@ public final class SqlRepository<T> implements Repository<T> {
 
   @Override
   public Optional<T> findById(Object id) {
-    Objects.requireNonNull(id, "ID cannot be null");
+    Objects.requireNonNull(id, ID_NULL_MSG);
     var cached = this.identityMap.resolve(id);
     if (cached != null) {
       return Optional.of(cached);
@@ -336,7 +340,7 @@ public final class SqlRepository<T> implements Repository<T> {
 
   @Override
   public boolean existsById(Object id) {
-    Objects.requireNonNull(id, "ID cannot be null");
+    Objects.requireNonNull(id, ID_NULL_MSG);
     awaitMigrations();
     return this.sqlExecutor.execute(
         errorMsg("existsById", id),
