@@ -99,12 +99,12 @@ public final class MigrationRunner {
 
   private Set<Integer> loadAppliedVersions(DatabaseConnection connection) {
     var tableName = this.dialect.quoteIdentifier("paper_orm_migrations");
-    var sql = "SELECT version FROM " + tableName; // NOSONAR: tableName is a quoted constant
+    var sql = "SELECT version FROM " + tableName;
     var versions = new HashSet<Integer>();
 
     try (var conn = connection.openConnection();
         var stmt = conn.createStatement();
-        var resultSet = stmt.executeQuery(sql)) {
+        var resultSet = stmt.executeQuery(sql)) { // NOSONAR: tableName is a quoted constant
 
       while (resultSet.next()) {
         versions.add(resultSet.getInt("version"));
@@ -119,14 +119,15 @@ public final class MigrationRunner {
   private void applyMigration(DatabaseConnection connection, Migration migration) {
     var tableName = this.dialect.quoteIdentifier("paper_orm_migrations");
     // Safe: tableName is a quoted constant; params use PreparedStatement bind variables
-    var insertSql = "INSERT INTO " + tableName + " (version, description) VALUES (?, ?)"; // NOSONAR
+    var insertSql = "INSERT INTO " + tableName + " (version, description) VALUES (?, ?)";
     connection.runInTransaction(
         txConnection -> {
           try (var statement = txConnection.createStatement()) {
             statement.executeUpdate(migration.sql());
           }
 
-          try (var statement = txConnection.prepareStatement(insertSql)) {
+          try (var statement =
+              txConnection.prepareStatement(insertSql)) { // NOSONAR: tableName is a quoted constant
             statement.setInt(1, migration.version());
             statement.setString(2, migration.description());
             statement.executeUpdate();
