@@ -4,6 +4,7 @@ import com.github.paperorm.exception.ConnectionException;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.sql.DataSource;
@@ -15,7 +16,7 @@ public class DataSourceDatabaseConnection implements DatabaseConnection {
 
   private final DataSource dataSource;
   private final Logger logger;
-  private final ThreadLocal<Connection> activeTransactionConnection = new ThreadLocal<>();
+  private final ThreadLocal<TransactionHolder> activeTransaction = new ThreadLocal<>();
 
   public DataSourceDatabaseConnection(DataSource dataSource) {
     this(dataSource, DEFAULT_LOGGER);
@@ -26,26 +27,39 @@ public class DataSourceDatabaseConnection implements DatabaseConnection {
     this.logger = Objects.requireNonNullElse(logger, DEFAULT_LOGGER);
   }
 
+  @Override
   public Connection openConnection() throws SQLException {
-    Connection txConn = activeTransactionConnection.get();
-    if (txConn != null) {
-      return (Connection)
-          java.lang.reflect.Proxy.newProxyInstance(
-              Connection.class.getClassLoader(),
-              new Class<?>[] {Connection.class},
-              (proxy, method, args) -> {
-                if ("close".equals(method.getName()) && (args == null || args.length == 0)) {
-                  return null;
-                }
-                try {
-                  return method.invoke(txConn, args);
-                } catch (java.lang.reflect.InvocationTargetException e) {
-                  throw e.getTargetException();
-                }
-              });
+    var holder = activeTransaction.get();
+    if (holder != null) {
+      return createTransactionalProxy(holder.connection());
     }
 
     return this.dataSource.getConnection();
+  }
+
+  private Connection createTransactionalProxy(Connection txConn) {
+    return (Connection)
+        java.lang.reflect.Proxy.newProxyInstance(
+            Connection.class.getClassLoader(),
+            new Class<?>[] {Connection.class},
+            (proxy, method, args) -> {
+              var name = method.getName();
+              if ("close".equals(name) && (args == null || args.length == 0)) {
+                return null;
+              }
+              if ("commit".equals(name) || "rollback".equals(name)) {
+                throw new SQLException(
+                    "Cannot call "
+                        + name
+                        + "() on a connection managed by an active PaperORM transaction."
+                        + " Use the transaction callback instead.");
+              }
+              try {
+                return method.invoke(txConn, args);
+              } catch (java.lang.reflect.InvocationTargetException e) {
+                throw e.getTargetException();
+              }
+            });
   }
 
   @Override
@@ -60,9 +74,9 @@ public class DataSourceDatabaseConnection implements DatabaseConnection {
   public <T> T runInTransaction(TransactionCallback<T> callback) {
     Objects.requireNonNull(callback, "callback cannot be null");
 
-    Connection existingConnection = activeTransactionConnection.get();
-    if (existingConnection != null) {
-      return executeCallback(callback, existingConnection);
+    var holder = activeTransaction.get();
+    if (holder != null) {
+      return executeNestedCallback(callback, holder);
     }
 
     try (Connection connection = this.dataSource.getConnection()) {
@@ -72,22 +86,27 @@ public class DataSourceDatabaseConnection implements DatabaseConnection {
     }
   }
 
-  private <T> T executeCallback(TransactionCallback<T> callback, Connection connection) {
+  private <T> T executeNestedCallback(
+      TransactionCallback<T> callback, TransactionHolder currentHolder) {
+    currentHolder.depth().incrementAndGet();
     try {
-      return callback.apply(connection);
+      return callback.apply(currentHolder.connection());
     } catch (SQLException e) {
       throw new ConnectionException("Transaction failed", e);
+    } finally {
+      currentHolder.depth().decrementAndGet();
     }
   }
 
   private <T> T executeNewTransaction(TransactionCallback<T> callback, Connection connection)
       throws SQLException {
     boolean originalAutoCommit = connection.getAutoCommit();
+    var holder = new TransactionHolder(connection, new AtomicInteger(1));
     try {
       if (originalAutoCommit) {
         connection.setAutoCommit(false);
       }
-      activeTransactionConnection.set(connection);
+      activeTransaction.set(holder);
 
       T result = callback.apply(connection);
       connection.commit();
@@ -96,7 +115,9 @@ public class DataSourceDatabaseConnection implements DatabaseConnection {
       handleTransactionException(connection, e);
       throw e;
     } finally {
-      activeTransactionConnection.remove();
+      if (holder.depth().get() <= 1) {
+        activeTransaction.remove();
+      }
       if (originalAutoCommit) {
         try {
           connection.setAutoCommit(true);
@@ -119,6 +140,14 @@ public class DataSourceDatabaseConnection implements DatabaseConnection {
       throw runtimeException;
     }
     throw new ConnectionException("Transaction failed", e);
+  }
+
+  private record TransactionHolder(Connection connection, AtomicInteger depth) {}
+
+  @Override
+  public boolean isInTransaction() {
+    var holder = activeTransaction.get();
+    return holder != null && holder.depth().get() > 0;
   }
 
   @Override

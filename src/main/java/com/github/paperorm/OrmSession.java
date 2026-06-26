@@ -29,7 +29,7 @@ public final class OrmSession implements AutoCloseable, SessionCacheProvider {
     return this.context.useCache();
   }
 
-  public <T> Repository<T> getRepository(Class<T> entityClass) {
+  public synchronized <T> Repository<T> getRepository(Class<T> entityClass) {
     Objects.requireNonNull(entityClass, ENTITY_CLASS_NULL_MSG);
     if (this.closed) {
       throw new IllegalStateException("Session is closed");

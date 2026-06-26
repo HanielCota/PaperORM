@@ -110,6 +110,48 @@ class MigrationRunnerTest {
   }
 
   @Test
+  void shouldRunMultiStatementMigration() throws Exception {
+    var migrations =
+        List.of(
+            new Migration(
+                1,
+                "Multi statement",
+                "CREATE TABLE m1 (id INTEGER PRIMARY KEY); CREATE TABLE m2 (id INTEGER PRIMARY KEY);"));
+    runner.run(connection, migrations);
+
+    assertTableExists("m1");
+    assertTableExists("m2");
+    assertMigrationRecorded(1);
+  }
+
+  @Test
+  void shouldHandleGapsInMigrationVersions() throws Exception {
+    var dir = tempDir.resolve("gapped_migrations");
+    Files.createDirectory(dir);
+    Files.writeString(dir.resolve("V1.sql"), "CREATE TABLE gap_one (id INTEGER PRIMARY KEY)");
+    Files.writeString(dir.resolve("V3.sql"), "CREATE TABLE gap_three (id INTEGER PRIMARY KEY)");
+
+    var loaded = MigrationRunner.loadFromDirectory(dir);
+    assertEquals(2, loaded.size());
+    assertEquals(1, loaded.get(0).version());
+    assertEquals(3, loaded.get(1).version());
+
+    runner.run(connection, loaded);
+    assertTableExists("gap_one");
+    assertTableExists("gap_three");
+  }
+
+  @Test
+  void shouldSplitStatementsRespectingQuotes() {
+    var script = "INSERT INTO t VALUES ('a;b'); INSERT INTO t VALUES ('c');";
+    var statements = MigrationRunner.splitStatements(script);
+
+    assertEquals(2, statements.size());
+    assertEquals("INSERT INTO t VALUES ('a;b')", statements.get(0));
+    assertEquals("INSERT INTO t VALUES ('c')", statements.get(1));
+  }
+
+  @Test
   void shouldRejectNullArgs() {
     assertThrows(NullPointerException.class, () -> runner.run(null, List.of()));
     assertThrows(NullPointerException.class, () -> runner.run(connection, null));

@@ -188,6 +188,51 @@ class SqlRepositoryTest {
   }
 
   @Test
+  void shouldRejectSqlInjectionInQuery() {
+    repository.ensureTable();
+    repository.save(new TestReward(1L, "Safe", 10.0));
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> repository.findByQuery("name = ?; DROP TABLE test_rewards", "Safe"));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> repository.findByQuery("name = ? -- comment", "Safe"));
+  }
+
+  @Test
+  void shouldEvictCacheOnWriteInsideTransaction() {
+    repository.ensureTable();
+    var reward = new TestReward(12L, "TxCache", 10.0);
+
+    connection.runInTransaction(
+        tx -> {
+          repository.save(reward);
+          var found = repository.findById(12L);
+          assertTrue(found.isPresent(), "Should read saved entity within same transaction");
+          assertEquals("TxCache", found.get().name);
+          return null;
+        });
+  }
+
+  @Test
+  void shouldPreDeleteFireForUncachedEntity() {
+    repository.ensureTable();
+    var cbRepo = new SqlRepository<>(CallbackEntity.class, context);
+    cbRepo.ensureTable();
+
+    var entity = new CallbackEntity();
+    entity.name = "ToDelete";
+    cbRepo.save(entity);
+    cbRepo.clearCache();
+
+    CallbackEntity.preDeleteCount = 0;
+    var id = entity.id;
+    cbRepo.deleteById(id);
+    assertEquals(1, CallbackEntity.preDeleteCount, "@PreDelete should fire on deleteById");
+  }
+
+  @Test
   void shouldRollbackTransactionOnFailure() {
     repository.ensureTable();
 
@@ -208,6 +253,27 @@ class SqlRepositoryTest {
     var found = repository.findById(10L);
     assertTrue(
         found.isEmpty(), "Reward should not have been saved because transaction was rolled back");
+  }
+
+  @Test
+  void shouldSupportNestedTransactions() {
+    repository.ensureTable();
+
+    var reward = new TestReward(13L, "NestedTx", 100.0);
+
+    connection.runInTransaction(
+        outer -> {
+          repository.save(reward);
+          connection.runInTransaction(
+              inner -> {
+                repository.save(new TestReward(14L, "InnerTx", 200.0));
+                return null;
+              });
+          return null;
+        });
+
+    assertTrue(repository.findById(13L).isPresent());
+    assertTrue(repository.findById(14L).isPresent());
   }
 
   @Test
@@ -523,6 +589,7 @@ class CallbackEntity {
   boolean preUpdateFired = false;
   boolean postLoadFired = false;
   boolean preDeleteFired = false;
+  static int preDeleteCount = 0;
 
   @PrePersist
   void onPrePersist() {
@@ -543,6 +610,7 @@ class CallbackEntity {
   @PreDelete
   void onPreDelete() {
     this.preDeleteFired = true;
+    preDeleteCount++;
   }
 }
 

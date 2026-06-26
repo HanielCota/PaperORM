@@ -11,6 +11,14 @@ public interface DatabaseConnection extends AutoCloseable {
 
   <T> T runInTransaction(TransactionCallback<T> callback);
 
+  /**
+   * Returns true if the current thread is currently inside a transaction managed by this
+   * connection.
+   */
+  default boolean isInTransaction() {
+    return false;
+  }
+
   @Override
   void close();
 }

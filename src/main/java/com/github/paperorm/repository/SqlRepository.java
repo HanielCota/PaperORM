@@ -106,9 +106,22 @@ public final class SqlRepository<T> implements Repository<T> {
             if (isAuto) {
               assignGeneratedKey(statement, idColumn, entity);
             }
-            registerInIdentityMap(entity, idColumn);
           }
         });
+    updateIdentityMapAfterWrite(entity, idColumn);
+  }
+
+  private void updateIdentityMapAfterWrite(
+      T entity, com.github.paperorm.mapping.ColumnMetadata idColumn) {
+    var idValue = this.entityMapper.readField(idColumn, entity);
+    if (idValue == null) {
+      return;
+    }
+    if (this.databaseConnection.isInTransaction()) {
+      this.identityMap.evict(idValue);
+      return;
+    }
+    this.identityMap.register(idValue, entity);
   }
 
   @Override
@@ -151,17 +164,18 @@ public final class SqlRepository<T> implements Repository<T> {
                 throw new OrmException(errorMsg(SAVE_ALL) + ", no rows affected");
               }
               try (var keys = statement.getGeneratedKeys()) {
-                if (keys.next()) {
-                  var generatedId = keys.getLong(1);
-                  this.entityMapper.setGeneratedId(idColumn, entity, generatedId);
+                if (!keys.next()) {
+                  throw new OrmException(errorMsg(SAVE_ALL) + ", no generated key returned");
                 }
+                var generatedId = keys.getObject(1);
+                this.entityMapper.setGeneratedId(idColumn, entity, generatedId);
               }
             }
           }
         });
 
     for (var entity : entities) {
-      registerInIdentityMap(entity, idColumn);
+      updateIdentityMapAfterWrite(entity, idColumn);
     }
   }
 
@@ -182,7 +196,7 @@ public final class SqlRepository<T> implements Repository<T> {
 
     var idColumn = this.metadata.idColumn();
     for (var entity : entities) {
-      registerInIdentityMap(entity, idColumn);
+      updateIdentityMapAfterWrite(entity, idColumn);
     }
   }
 
@@ -201,6 +215,9 @@ public final class SqlRepository<T> implements Repository<T> {
         errorMsg("update", idValue),
         connection -> {
           var sql = this.dialect.update(this.metadata);
+          if (sql == null) {
+            return;
+          }
           try (var statement = connection.prepareStatement(sql)) {
             bindUpdateParameters(statement, entity, idValue);
             if (statement.executeUpdate() == 0) {
@@ -209,42 +226,58 @@ public final class SqlRepository<T> implements Repository<T> {
           }
         });
 
-    this.identityMap.register(idValue, entity);
+    updateIdentityMapAfterWrite(entity, idColumn);
   }
 
   @Override
   public void updateAll(Iterable<T> entities) {
     Objects.requireNonNull(entities, "Entities cannot be null");
     var idColumn = this.metadata.idColumn();
+    var updates = prepareUpdates(entities, idColumn);
+    if (updates.isEmpty()) {
+      return;
+    }
 
     awaitMigrations();
     this.sqlExecutor.executeVoid(
         errorMsg("updateAll"),
         connection -> {
           var sql = this.dialect.update(this.metadata);
+          if (sql == null) {
+            return;
+          }
           try (var statement = connection.prepareStatement(sql)) {
-            for (var entity : entities) {
-              if (entity == null) {
-                continue;
-              }
-              this.lifecycle.firePreUpdate(entity);
-              var idValue = this.entityMapper.readField(idColumn, entity);
-              if (idValue == null) {
-                throw new IllegalArgumentException("Entity must have a non-null ID to be updated");
-              }
-              bindUpdateParameters(statement, entity, idValue);
+            for (var update : updates) {
+              bindUpdateParameters(statement, cast(update.entity()), update.idValue());
               statement.addBatch();
             }
             statement.executeBatch();
           }
         });
 
-    for (var entity : entities) {
-      if (entity != null) {
-        registerInIdentityMap(entity, idColumn);
-      }
+    for (var update : updates) {
+      updateIdentityMapAfterWrite(cast(update.entity()), idColumn);
     }
   }
+
+  private List<Update> prepareUpdates(
+      Iterable<T> entities, com.github.paperorm.mapping.ColumnMetadata idColumn) {
+    var updates = new ArrayList<Update>();
+    for (var entity : entities) {
+      if (entity == null) {
+        continue;
+      }
+      this.lifecycle.firePreUpdate(entity);
+      var idValue = this.entityMapper.readField(idColumn, entity);
+      if (idValue == null) {
+        throw new IllegalArgumentException("Entity must have a non-null ID to be updated");
+      }
+      updates.add(new Update(entity, idValue));
+    }
+    return updates;
+  }
+
+  private record Update(Object entity, Object idValue) {}
 
   @Override
   public void delete(T entity) {
@@ -264,10 +297,37 @@ public final class SqlRepository<T> implements Repository<T> {
     var cached = this.identityMap.resolve(id);
     if (cached != null) {
       this.lifecycle.firePreDelete(cached);
+    } else {
+      loadAndFirePreDelete(id);
     }
 
     performDelete(id);
     this.identityMap.evict(id);
+  }
+
+  private void loadAndFirePreDelete(Object id) {
+    var loaded = loadEntityById(id);
+    if (loaded != null) {
+      this.lifecycle.firePreDelete(loaded);
+    }
+  }
+
+  private T loadEntityById(Object id) {
+    awaitMigrations();
+    return this.sqlExecutor.execute(
+        errorMsg("loadEntityById", id),
+        connection -> {
+          var sql = this.dialect.selectById(this.metadata);
+          try (var statement = connection.prepareStatement(sql)) {
+            this.typeMapper.setParameter(statement, 1, id);
+            try (var resultSet = statement.executeQuery()) {
+              if (!resultSet.next()) {
+                return null;
+              }
+              return this.entityMapper.mapRow(resultSet, this.metadata.columns());
+            }
+          }
+        });
   }
 
   private void performDelete(Object id) {
@@ -290,6 +350,7 @@ public final class SqlRepository<T> implements Repository<T> {
     Objects.requireNonNull(id, ID_NULL_MSG);
     var cached = this.identityMap.resolve(id);
     if (cached != null) {
+      this.lifecycle.firePostLoad(cached);
       return Optional.of(cached);
     }
 
@@ -305,8 +366,9 @@ public final class SqlRepository<T> implements Repository<T> {
                 return Optional.empty();
               }
               var entity = this.entityMapper.mapRow(resultSet, this.metadata.columns());
-              this.lifecycle.firePostLoad(entity);
-              return Optional.of(cacheOrGet(entity));
+              var cachedOrNew = cacheOrGet(entity);
+              this.lifecycle.firePostLoad(cachedOrNew);
+              return Optional.of(cachedOrNew);
             }
           }
         });
@@ -365,12 +427,13 @@ public final class SqlRepository<T> implements Repository<T> {
   @Override
   public List<T> findByQuery(String whereClause, Object... parameters) {
     var params = parameters != null ? parameters : new Object[0];
+    var validated = validateWhereClause(whereClause);
 
     awaitMigrations();
     return this.sqlExecutor.execute(
         errorMsg("findByQuery"),
         connection -> {
-          var sql = this.dialect.selectAllWithCondition(this.metadata, whereClause);
+          var sql = this.dialect.selectAllWithCondition(this.metadata, validated);
           try (var statement = connection.prepareStatement(sql)) {
             for (int i = 0; i < params.length; i++) {
               this.typeMapper.setParameter(statement, i + 1, params[i]);
@@ -385,12 +448,13 @@ public final class SqlRepository<T> implements Repository<T> {
   @Override
   public long countByQuery(String whereClause, Object... parameters) {
     var params = parameters != null ? parameters : new Object[0];
+    var validated = validateWhereClause(whereClause);
 
     awaitMigrations();
     return this.sqlExecutor.execute(
         errorMsg("countByQuery"),
         connection -> {
-          var sql = this.dialect.countWithCondition(this.metadata, whereClause);
+          var sql = this.dialect.countWithCondition(this.metadata, validated);
           try (var statement = connection.prepareStatement(sql)) {
             for (int i = 0; i < params.length; i++) {
               this.typeMapper.setParameter(statement, i + 1, params[i]);
@@ -436,6 +500,11 @@ public final class SqlRepository<T> implements Repository<T> {
     return "Failed to " + operation + " " + this.entityClassName;
   }
 
+  @SuppressWarnings("unchecked")
+  private T cast(Object object) {
+    return (T) object;
+  }
+
   private void bindInsertParameters(PreparedStatement statement, T entity) throws SQLException {
     var parameterIndex = 1;
     for (var column : this.metadata.columns()) {
@@ -466,20 +535,30 @@ public final class SqlRepository<T> implements Repository<T> {
       Statement statement, com.github.paperorm.mapping.ColumnMetadata idColumn, T entity)
       throws SQLException {
     try (var keys = statement.getGeneratedKeys()) {
-      if (keys.next()) {
-        var generatedId = keys.getLong(1);
-        this.entityMapper.setGeneratedId(idColumn, entity, generatedId);
-        this.identityMap.register(generatedId, entity);
+      if (!keys.next()) {
+        throw new OrmException("Failed to save, no generated key returned");
       }
+      var generatedId = keys.getObject(1);
+      this.entityMapper.setGeneratedId(idColumn, entity, generatedId);
     }
   }
 
-  private void registerInIdentityMap(
-      T entity, com.github.paperorm.mapping.ColumnMetadata idColumn) {
-    var idValue = this.entityMapper.readField(idColumn, entity);
-    if (idValue != null) {
-      this.identityMap.register(idValue, entity);
+  private String validateWhereClause(String whereClause) {
+    if (whereClause == null) {
+      return null;
     }
+    var trimmed = whereClause.trim();
+    if (trimmed.isEmpty()) {
+      return null;
+    }
+    if (trimmed.contains(";")) {
+      throw new IllegalArgumentException(
+          "Raw where clauses cannot contain statement separators (';')");
+    }
+    if (trimmed.contains("--") || trimmed.contains("/*") || trimmed.contains("*/")) {
+      throw new IllegalArgumentException("Raw where clauses cannot contain SQL comments");
+    }
+    return trimmed;
   }
 
   private List<T> mapResultSet(ResultSet resultSet) throws SQLException {
@@ -487,8 +566,9 @@ public final class SqlRepository<T> implements Repository<T> {
     var columns = this.metadata.columns();
     while (resultSet.next()) {
       var entity = this.entityMapper.mapRow(resultSet, columns);
-      this.lifecycle.firePostLoad(entity);
-      entities.add(cacheOrGet(entity));
+      var cachedOrNew = cacheOrGet(entity);
+      this.lifecycle.firePostLoad(cachedOrNew);
+      entities.add(cachedOrNew);
     }
     return entities;
   }

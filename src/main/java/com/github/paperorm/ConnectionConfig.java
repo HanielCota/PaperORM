@@ -34,9 +34,11 @@ public sealed interface ConnectionConfig {
     @Override
     public DatabaseConnection createConnection(Logger logger) {
       var config = ConnectionConfig.createBasePoolConfig();
-      config.setJdbcUrl("jdbc:sqlite:%s".formatted(path.toAbsolutePath()));
-      config.setConnectionInitSql(
-          "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;");
+      var normalizedPath = path.toAbsolutePath().toString().replace('\\', '/');
+      config.setJdbcUrl(
+          "jdbc:sqlite:file:"
+              + normalizedPath
+              + "?_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=1");
 
       return new DataSourceDatabaseConnection(new HikariDataSource(config), logger);
     }

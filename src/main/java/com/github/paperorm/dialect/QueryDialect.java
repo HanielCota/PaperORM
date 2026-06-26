@@ -34,7 +34,7 @@ public interface QueryDialect {
     if (upper.startsWith("ORDER BY")
         || upper.startsWith("LIMIT")
         || upper.startsWith("OFFSET")
-        || upper.startsWith("WHERE ")) {
+        || upper.startsWith("WHERE")) {
       return baseSql + " " + whereClause;
     }
     return baseSql + " WHERE " + whereClause;

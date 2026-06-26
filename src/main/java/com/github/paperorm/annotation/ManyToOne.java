@@ -10,4 +10,6 @@ import java.lang.annotation.Target;
 public @interface ManyToOne {
 
   String name() default "";
+
+  boolean nullable() default true;
 }

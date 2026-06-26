@@ -9,9 +9,6 @@ import java.util.logging.Logger;
 
 public final class SqliteDatabaseConnection extends DataSourceDatabaseConnection {
 
-  private static final String INIT_SQL =
-      "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;";
-
   public SqliteDatabaseConnection(Path databasePath) {
     this(databasePath, null);
   }
@@ -29,9 +26,13 @@ public final class SqliteDatabaseConnection extends DataSourceDatabaseConnection
     log.log(Level.INFO, "Initializing SQLite Database connection pool at path: {0}", absolutePath);
 
     var config = new HikariConfig();
-    config.setJdbcUrl("jdbc:sqlite:" + absolutePath);
+    var normalizedPath = absolutePath.replace('\\', '/');
+
+    config.setJdbcUrl(
+        "jdbc:sqlite:file:"
+            + normalizedPath
+            + "?_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=1");
     config.setMaximumPoolSize(10);
-    config.setConnectionInitSql(INIT_SQL);
 
     // Cache config
     config.addDataSourceProperty("cachePrepStmts", "true");

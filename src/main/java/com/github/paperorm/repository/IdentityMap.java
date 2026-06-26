@@ -38,13 +38,16 @@ final class IdentityMap<T> {
       return entity;
     }
 
-    var existing = resolve(id);
-    if (existing != null) {
-      return existing;
+    if (this.session != null) {
+      var existing = this.session.getIdentity(this.entityClass, id);
+      if (existing != null) {
+        return existing;
+      }
+      this.session.registerIdentity(this.entityClass, id, entity);
+      return entity;
     }
 
-    register(id, entity);
-    return entity;
+    return this.localCache.computeIfAbsent(id, key -> entity);
   }
 
   public T resolve(Object id) {

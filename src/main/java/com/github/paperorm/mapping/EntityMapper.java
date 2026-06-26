@@ -19,14 +19,11 @@ public final class EntityMapper<T> {
     this.entityClass = entityClass;
     this.typeMapper = typeMapper;
     this.idResolver = idResolver;
-    this.constructor = resolveConstructor(entityClass);
+    this.constructor = getNoArgConstructor(entityClass);
   }
 
-  private Constructor<T> resolveConstructor(Class<T> clazz) {
-    return (Constructor<T>) getNoArgConstructor(clazz);
-  }
-
-  private static Constructor<?> getNoArgConstructor(Class<?> clazz) {
+  @SuppressWarnings("unchecked")
+  private static <T> Constructor<T> getNoArgConstructor(Class<T> clazz) {
     try {
       var ctor = clazz.getDeclaredConstructor();
       if (!ctor.trySetAccessible()) {
@@ -89,9 +86,10 @@ public final class EntityMapper<T> {
 
   private void coerceAndSet(Field field, Object target, Object value) {
     if (value == null) {
-      if (!field.getType().isPrimitive()) {
-        setField(field, target, null);
+      if (field.getType().isPrimitive()) {
+        throw new MappingException("Cannot assign null to primitive field " + field.getName());
       }
+      setField(field, target, null);
       return;
     }
 
@@ -129,24 +127,60 @@ public final class EntityMapper<T> {
 
   private static Object coerceNumber(Number num, Class<?> targetType) {
     if (targetType == Integer.class || targetType == int.class) {
-      return num.intValue();
+      return coerceToInteger(num);
     }
     if (targetType == Long.class || targetType == long.class) {
-      return num.longValue();
+      return coerceToLong(num);
     }
     if (targetType == Short.class || targetType == short.class) {
+      var longValue = num.longValue();
+      if (longValue < Short.MIN_VALUE || longValue > Short.MAX_VALUE) {
+        throw new MappingException("Value " + num + " does not fit in short");
+      }
       return num.shortValue();
     }
     if (targetType == Byte.class || targetType == byte.class) {
+      var longValue = num.longValue();
+      if (longValue < Byte.MIN_VALUE || longValue > Byte.MAX_VALUE) {
+        throw new MappingException("Value " + num + " does not fit in byte");
+      }
       return num.byteValue();
     }
     if (targetType == Float.class || targetType == float.class) {
+      var doubleValue = num.doubleValue();
+      if (doubleValue < -Float.MAX_VALUE || doubleValue > Float.MAX_VALUE) {
+        throw new MappingException("Value " + num + " does not fit in float");
+      }
       return num.floatValue();
     }
     if (targetType == Double.class || targetType == double.class) {
       return num.doubleValue();
     }
     return null;
+  }
+
+  private static Integer coerceToInteger(Number num) {
+    var longValue = num.longValue();
+    if (longValue < Integer.MIN_VALUE || longValue > Integer.MAX_VALUE) {
+      throw new MappingException("Value " + num + " does not fit in int");
+    }
+    if (num instanceof Double || num instanceof Float) {
+      var doubleValue = num.doubleValue();
+      if (doubleValue != longValue) {
+        throw new MappingException("Fractional value " + num + " cannot be assigned to int");
+      }
+    }
+    return num.intValue();
+  }
+
+  private static Long coerceToLong(Number num) {
+    if (num instanceof Double || num instanceof Float) {
+      var doubleValue = num.doubleValue();
+      if (doubleValue != num.longValue()) {
+        throw new MappingException("Fractional value " + num + " cannot be assigned to long");
+      }
+    }
+    return num.longValue();
   }
 
   private void setField(Field field, Object target, Object value) {
@@ -157,6 +191,10 @@ public final class EntityMapper<T> {
     }
   }
 
+  /**
+   * Creates a lightweight reference shell containing only the referenced entity's ID. Other fields
+   * are left at their default values; load the full entity separately if required.
+   */
   private Object createReferencedShell(Class<?> clazz, Object idValue) {
     try {
       var ctor = getNoArgConstructor(clazz);

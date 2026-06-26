@@ -23,7 +23,9 @@ public abstract class AbstractSqlDialect implements SqlDialect {
 
   protected abstract String autoIncrementKeyword();
 
-  protected abstract String identityColumnSuffix(ColumnMetadata column);
+  protected String identityColumnSuffix(ColumnMetadata column) {
+    return "PRIMARY KEY " + autoIncrementKeyword();
+  }
 
   protected boolean includeUniqueInAddColumn() {
     return false;
@@ -86,8 +88,7 @@ public abstract class AbstractSqlDialect implements SqlDialect {
           }
 
           if (setClause.length() == 0) {
-            throw new IllegalArgumentException(
-                "Cannot generate UPDATE statement for entity without updatable columns");
+            return null;
           }
 
           return "UPDATE %s SET %s WHERE %s = ?"
@@ -170,6 +171,11 @@ public abstract class AbstractSqlDialect implements SqlDialect {
 
   @Override
   public String addColumn(String tableName, ColumnMetadata column) {
+    return addColumn(tableName, column, column.nullable());
+  }
+
+  @Override
+  public String addColumn(String tableName, ColumnMetadata column, boolean nullable) {
     var def = new StringBuilder();
     def.append("ALTER TABLE ")
         .append(quoteIdentifier(tableName))
@@ -178,7 +184,7 @@ public abstract class AbstractSqlDialect implements SqlDialect {
         .append(" ")
         .append(column.sqlType());
 
-    if (!column.nullable()) {
+    if (!nullable) {
       def.append(" NOT NULL");
     }
 

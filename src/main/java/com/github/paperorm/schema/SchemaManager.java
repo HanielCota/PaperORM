@@ -14,13 +14,46 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public final class SchemaManager {
 
+  private static final Object SCHEMA_LOCK = new Object();
+
   private final DatabaseConnection connection;
   private final SqlDialect dialect;
 
   public void ensureTable(EntityMetadata metadata) {
-    execute(this.dialect.createTable(metadata));
-    synchronizeColumns(metadata);
-    createIndexes(metadata);
+    synchronized (SCHEMA_LOCK) {
+      execute(this.dialect.createTable(metadata));
+      synchronizeColumns(metadata);
+      createIndexes(metadata);
+    }
+  }
+
+  /**
+   * Drops columns that exist in the database but are no longer present in the entity metadata.
+   *
+   * <p>This is a destructive operation that can lead to data loss. Call it explicitly only when you
+   * are sure that the obsolete columns should be removed.
+   */
+  public void dropObsoleteColumns(EntityMetadata metadata) {
+    synchronized (SCHEMA_LOCK) {
+      var tableName = metadata.tableName();
+      var existingColumns = loadExistingColumns(tableName);
+      var entityColumns = new HashSet<String>();
+      for (var column : metadata.columns()) {
+        entityColumns.add(column.columnName().toLowerCase());
+      }
+
+      for (var existing : existingColumns) {
+        if (entityColumns.contains(existing)) {
+          continue;
+        }
+        var sql =
+            "ALTER TABLE "
+                + this.dialect.quoteIdentifier(tableName)
+                + " DROP COLUMN "
+                + this.dialect.quoteIdentifier(existing);
+        execute(sql);
+      }
+    }
   }
 
   private void createIndexes(EntityMetadata metadata) {
@@ -68,13 +101,15 @@ public final class SchemaManager {
     var alterSql = this.dialect.addColumn(tableName, column);
     try {
       execute(alterSql);
+      return;
     } catch (OrmException exception) {
       if (column.nullable() || !column.autoIncrement()) {
         throw exception;
       }
-      var fallbackSql = alterSql.replace(" NOT NULL", "");
-      execute(fallbackSql);
     }
+
+    var fallbackSql = this.dialect.addColumn(tableName, column, true);
+    execute(fallbackSql);
   }
 
   private Set<String> loadExistingColumns(String tableName) {

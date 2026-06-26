@@ -60,7 +60,11 @@ public final class Spec<T> implements Specification<T>, Query<T> {
   @Override
   public Spec<T> where(String column) {
     Objects.requireNonNull(column, COLUMN_REQUIRED);
-    return new Spec<>(List.of(), column, this.repository, this.dialect);
+    flushColumn();
+    if (this.fragments.isEmpty()) {
+      return new Spec<>(List.of(), column, this.repository, this.dialect);
+    }
+    return withFragment(new Junction("AND"), column);
   }
 
   @Override
@@ -150,9 +154,21 @@ public final class Spec<T> implements Specification<T>, Query<T> {
 
   @Override
   public Spec<T> orderBy(String column, String direction) {
+    Objects.requireNonNull(column, "column");
     flushColumn();
-    var dir = "DESC".equalsIgnoreCase(direction) ? "DESC" : "ASC";
-    return withFragment(new OrderByClause(column, dir), null);
+    var normalized = normalizeDirection(direction);
+    return withFragment(new OrderByClause(column, normalized), null);
+  }
+
+  private static String normalizeDirection(String direction) {
+    if (direction == null || direction.isBlank()) {
+      return "ASC";
+    }
+    var upper = direction.trim().toUpperCase();
+    if ("ASC".equals(upper) || "DESC".equals(upper)) {
+      return upper;
+    }
+    throw new IllegalArgumentException("Invalid order direction: " + direction);
   }
 
   @Override

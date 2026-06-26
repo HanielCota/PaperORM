@@ -117,7 +117,10 @@ public final class ReflectionEntityScanner implements EntityScanner {
     var columnName = resolveColumnName(field, columnAnnotation, manyToOneAnnotation);
     var isId = idAnnotation != null;
     var autoIncrement = isId && idAnnotation.autoIncrement();
-    var nullable = columnAnnotation == null || columnAnnotation.nullable();
+    var nullable =
+        isManyToOne
+            ? manyToOneAnnotation.nullable()
+            : columnAnnotation == null || columnAnnotation.nullable();
     var unique = columnAnnotation != null && columnAnnotation.unique();
     var length = (columnAnnotation != null) ? columnAnnotation.length() : 255;
 

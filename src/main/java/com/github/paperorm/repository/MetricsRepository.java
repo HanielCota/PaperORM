@@ -75,8 +75,20 @@ public final class MetricsRepository<T> extends ForwardingRepository<T> {
 
   @Override
   public void saveAll(Iterable<T> entities) {
-    saveCount.incrementAndGet();
+    var count = countEntities(entities);
+    saveCount.addAndGet(count);
     timed(() -> delegate.saveAll(entities));
+  }
+
+  private long countEntities(Iterable<T> entities) {
+    if (entities == null) {
+      return 0;
+    }
+    var count = 0L;
+    for (var ignored : entities) {
+      count++;
+    }
+    return count;
   }
 
   @Override

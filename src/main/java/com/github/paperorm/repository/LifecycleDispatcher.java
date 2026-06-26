@@ -75,7 +75,6 @@ final class LifecycleDispatcher<T> {
         entityClass,
         clazz -> {
           var methods = new ArrayList<MethodHandle>();
-          var lookup = MethodHandles.lookup();
 
           for (var current = clazz;
               current != null && current != Object.class;
@@ -94,6 +93,7 @@ final class LifecycleDispatcher<T> {
                         + " accessible");
               }
 
+              var lookup = createLookup(clazz);
               try {
                 methods.add(lookup.unreflect(method));
               } catch (IllegalAccessException e) {
@@ -104,5 +104,13 @@ final class LifecycleDispatcher<T> {
 
           return List.copyOf(methods);
         });
+  }
+
+  private static MethodHandles.Lookup createLookup(Class<?> entityClass) {
+    try {
+      return MethodHandles.privateLookupIn(entityClass, MethodHandles.lookup());
+    } catch (IllegalAccessException e) {
+      return MethodHandles.lookup();
+    }
   }
 }

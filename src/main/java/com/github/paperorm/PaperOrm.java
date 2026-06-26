@@ -140,6 +140,7 @@ public final class PaperOrm implements AutoCloseable {
 
     public Builder executor(Executor executor) {
       this.executor = executor;
+      this.ownsExecutor = false;
       return this;
     }
 

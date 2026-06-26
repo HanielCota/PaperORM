@@ -24,7 +24,12 @@ public final class TypeMapper {
         @Override
         public void setParameter(PreparedStatement statement, int index, Object value)
             throws SQLException {
-          statement.setObject(index, value);
+          if (value == null) {
+            statement.setObject(index, null, java.sql.Types.NULL);
+            return;
+          }
+          throw new TypeConversionException(
+              "No type converter registered for " + value.getClass().getName());
         }
 
         @Override
@@ -111,7 +116,11 @@ public final class TypeMapper {
           if (raw instanceof Boolean b) {
             return b;
           }
-          return ((Number) raw).intValue() != 0;
+          if (raw instanceof Number n) {
+            return n.intValue() != 0;
+          }
+          throw new TypeConversionException(
+              "Cannot convert " + raw.getClass().getName() + " to Boolean");
         });
   }
 
@@ -279,7 +288,7 @@ public final class TypeMapper {
   public void setParameter(PreparedStatement statement, int index, Object value)
       throws SQLException {
     if (value == null) {
-      statement.setObject(index, null);
+      statement.setObject(index, null, java.sql.Types.NULL);
       return;
     }
 
@@ -294,7 +303,8 @@ public final class TypeMapper {
       return;
     }
 
-    converter.setParameter(statement, index, value);
+    throw new TypeConversionException(
+        "No type converter registered for " + value.getClass().getName());
   }
 
   public Object readColumnValue(ResultSet resultSet, ColumnMetadata column) throws SQLException {

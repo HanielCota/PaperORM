@@ -8,5 +8,9 @@ public interface SchemaDialect {
 
   String addColumn(String tableName, ColumnMetadata column);
 
+  default String addColumn(String tableName, ColumnMetadata column, boolean nullable) {
+    return addColumn(tableName, column);
+  }
+
   String createMigrationTable();
 }
